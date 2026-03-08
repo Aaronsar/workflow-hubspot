@@ -656,71 +656,317 @@ function stopVoice() {
 }
 
 function parseVoiceCommand(text) {
-  const lower = text.toLowerCase();
-  let y = 60;
-  const getY = () => { const v = y; y += 120; return v; };
+  const lower = text.toLowerCase()
+    .replace(/['']/g, "'")
+    .replace(/\b(euh|hum|hmm|bon|alors|donc|voila|ok)\b/g, '') // filler words
+    .replace(/\s+/g, ' ').trim();
+
+  // Split into sequential steps using connectors
+  const splitters = /\b(?:puis|ensuite|apres|après|et puis|et ensuite|et apres|et après|après ça|apres ca|puis après|puis apres|deuxièmement|troisièmement|quatrièmement|deuxiemement|troisiemement|quatriemement|étape suivante|etape suivante|step|next|virgule)\b|[,;\.]+\s/g;
+  const segments = lower.split(splitters).map(s => s.trim()).filter(s => s.length > 2);
+
+  // If no splits found, try to detect multiple actions in one sentence
+  let steps = segments.length > 1 ? segments : smartSplit(lower);
+
   let createdNodes = [];
+  let y = 60;
+  const getY = () => { const v = y; y += 130; return v; };
+  const hasTrigger = nodes.some(n => NODE_TYPES[n.type].category === 'trigger');
 
-  // Detect triggers
-  if (lower.includes('formulaire') || lower.includes('soumission') || lower.includes('form')) {
-    createdNodes.push(addNode('trigger_form', 300, getY()));
-  } else if (lower.includes('liste') || lower.includes('ajout')) {
-    createdNodes.push(addNode('trigger_list', 300, getY()));
-  } else if (lower.includes('propriete') && (lower.includes('change') || lower.includes('quand') || lower.includes('declench') || lower.includes('trigger'))) {
-    createdNodes.push(addNode('trigger_property', 300, getY()));
-  }
+  // Process each step sequentially
+  steps.forEach((step, idx) => {
+    const s = step.trim();
+    if (!s) return;
 
-  // If no trigger detected, add a default one
-  if (createdNodes.length === 0 && !nodes.some(n => NODE_TYPES[n.type].category === 'trigger')) {
-    createdNodes.push(addNode('trigger_property', 300, getY()));
-  }
-
-  // Detect actions
-  if (lower.includes('email') || lower.includes('mail') || lower.includes('envoyer') || lower.includes('envoi')) {
-    createdNodes.push(addNode('send_email', 300, getY()));
-  }
-
-  if (lower.includes('attendre') || lower.includes('delai') || lower.includes('delay') || lower.includes('jour') || lower.includes('heure')) {
-    const data = {};
-    // Try to extract duration
-    const durMatch = lower.match(/(\d+)\s*(jour|heure|minute|semaine)/);
-    if (durMatch) {
-      data.duration = parseInt(durMatch[1]);
-      if (durMatch[2].startsWith('jour')) data.unit = 'DAYS';
-      else if (durMatch[2].startsWith('heure')) data.unit = 'HOURS';
-      else if (durMatch[2].startsWith('minute')) data.unit = 'MINUTES';
-      else if (durMatch[2].startsWith('semaine')) data.unit = 'WEEKS';
+    // --- TRIGGERS (only first step, and only if no trigger exists) ---
+    if (idx === 0 && !hasTrigger && createdNodes.length === 0) {
+      if (match(s, ['formulaire', 'soumission', 'form submission', 'soumis'])) {
+        const name = extractAfter(s, ['formulaire', 'form']);
+        createdNodes.push(addNode('trigger_form', 300, getY(), { formName: name }));
+        return;
+      }
+      if (match(s, ['liste', 'ajout liste', 'ajouté à une liste', 'ajoute a une liste', 'membership'])) {
+        const name = extractAfter(s, ['liste']);
+        createdNodes.push(addNode('trigger_list', 300, getY(), { listName: name }));
+        return;
+      }
+      if (match(s, ['quand', 'lorsque', 'déclencheur', 'declencheur', 'trigger', 'si le contact', 'si un contact'])) {
+        const prop = extractProperty(s);
+        createdNodes.push(addNode('trigger_property', 300, getY(), prop));
+        return;
+      }
     }
-    createdNodes.push(addNode('delay', 300, getY(), data));
+
+    // --- DELAYS ---
+    if (match(s, ['attendre', 'attend', 'délai', 'delai', 'delay', 'pause', 'patienter', 'wait'])) {
+      const data = extractDuration(s);
+      createdNodes.push(addNode('delay', 300, getY(), data));
+      return;
+    }
+    // Standalone duration like "3 jours" or "une semaine"
+    const standaloneDur = extractDuration(s);
+    if (standaloneDur.duration && !match(s, ['email', 'mail', 'tache', 'task', 'propriete', 'modifier', 'definir', 'contact', 'envoyer', 'condition', 'branche'])) {
+      createdNodes.push(addNode('delay', 300, getY(), standaloneDur));
+      return;
+    }
+
+    // --- EMAILS ---
+    if (match(s, ['email', 'mail', 'e-mail', 'envoyer un email', 'envoyer un mail', 'envoyer email', 'envoi', 'envoi de mail', 'courrier', 'message'])) {
+      const name = extractAfter(s, ['email', 'mail', 'e-mail']) || '';
+      createdNodes.push(addNode('send_email', 300, getY(), { emailName: name.trim() }));
+      return;
+    }
+
+    // --- SET PROPERTY ---
+    if (match(s, ['définir', 'definir', 'modifier', 'changer', 'mettre à jour', 'mettre a jour', 'update', 'set', 'passer', 'marquer', 'contact marketing', 'marketing', 'lifecycle', 'statut', 'status', 'propriété', 'propriete'])) {
+      const data = extractPropertyAction(s);
+      createdNodes.push(addNode('set_property', 300, getY(), data));
+      return;
+    }
+
+    // --- CREATE TASK ---
+    if (match(s, ['tâche', 'tache', 'task', 'rappel', 'reminder', 'todo', 'à faire', 'a faire', 'notification interne'])) {
+      const subject = extractAfter(s, ['tache', 'tâche', 'task', 'rappel', 'reminder']) || '';
+      createdNodes.push(addNode('create_task', 300, getY(), { subject: subject.trim() }));
+      return;
+    }
+
+    // --- BRANCH ---
+    if (match(s, ['condition', 'si ', 'si le', 'si la', 'branche', 'if ', 'branch', 'vérifier', 'verifier', 'check'])) {
+      const data = extractBranch(s);
+      createdNodes.push(addNode('branch', 300, getY(), data));
+      return;
+    }
+
+    // --- FALLBACK: try to guess from context ---
+    if (match(s, ['envoyer', 'envoi', 'send'])) {
+      createdNodes.push(addNode('send_email', 300, getY()));
+      return;
+    }
+  });
+
+  // If we created actions but no trigger, add a default one at the top
+  if (createdNodes.length > 0 && !hasTrigger && !nodes.some(n => NODE_TYPES[n.type].category === 'trigger')) {
+    const triggerId = addNode('trigger_property', 300, 60);
+    // Shift all created nodes down
+    createdNodes.forEach(id => {
+      const node = nodes.find(n => n.id === id);
+      if (node) { node.y += 130; document.getElementById(id).style.top = node.y + 'px'; }
+    });
+    createdNodes.unshift(triggerId);
   }
 
-  if (lower.includes('tache') || lower.includes('task') || lower.includes('rappel')) {
-    createdNodes.push(addNode('create_task', 300, getY()));
-  }
-
-  if (lower.includes('modifier') || lower.includes('changer') || lower.includes('mettre a jour') || lower.includes('update')) {
-    if (!lower.includes('declench') && !lower.includes('trigger')) {
-      createdNodes.push(addNode('set_property', 300, getY()));
+  // Connect existing last node to first new node
+  if (createdNodes.length > 0) {
+    const existingNodes = nodes.filter(n => !createdNodes.includes(n.id));
+    if (existingNodes.length > 0) {
+      // Find the last node in the existing chain that has no outgoing connection
+      const nodesWithOutgoing = new Set(connections.map(c => c.from));
+      const lastExisting = existingNodes.filter(n => !nodesWithOutgoing.has(n.id));
+      if (lastExisting.length > 0) {
+        connections.push({ from: lastExisting[lastExisting.length - 1].id, to: createdNodes[0] });
+      }
     }
   }
 
-  if (lower.includes('condition') || lower.includes('si ') || lower.includes('branche') || lower.includes('if ')) {
-    createdNodes.push(addNode('branch', 300, getY()));
-  }
-
-  // Auto-connect created nodes in sequence
+  // Auto-connect all created nodes in sequence
   for (let i = 0; i < createdNodes.length - 1; i++) {
-    const from = createdNodes[i];
-    const to = createdNodes[i + 1];
-    connections.push({ from, to });
+    connections.push({ from: createdNodes[i], to: createdNodes[i + 1] });
   }
   renderConnections();
 
   if (createdNodes.length > 0) {
-    showToast(`${createdNodes.length} noeud(s) cree(s) par vocal`, 'success');
+    showToast(`${createdNodes.length} noeud(s) cree(s) par vocal !`, 'success');
   } else {
-    showToast('Aucune action detectee. Essayez: "envoyer un email puis attendre 3 jours"', 'error');
+    showToast('Pas compris. Essayez: "quand un formulaire est soumis, envoyer un email, attendre 3 jours, modifier la propriete lifecycle"', 'error');
   }
+}
+
+// --- Voice parsing helpers ---
+
+function match(text, keywords) {
+  return keywords.some(k => text.includes(k));
+}
+
+function extractAfter(text, keywords) {
+  for (const k of keywords) {
+    const idx = text.indexOf(k);
+    if (idx >= 0) {
+      return text.substring(idx + k.length).trim().replace(/^(de|du|le|la|les|un|une|des|d'|l')\s*/i, '');
+    }
+  }
+  return '';
+}
+
+function extractDuration(text) {
+  const data = { duration: 1, unit: 'DAYS' };
+  // Match "3 jours", "une semaine", "2 heures", "48h", etc.
+  const numWords = { 'un': 1, 'une': 1, 'deux': 2, 'trois': 3, 'quatre': 4, 'cinq': 5, 'six': 6, 'sept': 7, 'huit': 8, 'neuf': 9, 'dix': 10, 'quinze': 15, 'vingt': 20, 'trente': 30 };
+
+  // Try numeric match first
+  let m = text.match(/(\d+)\s*(?:h(?:eure)?s?|hours?)/);
+  if (m) { data.duration = parseInt(m[1]); data.unit = 'HOURS'; return data; }
+
+  m = text.match(/(\d+)\s*(?:min(?:ute)?s?)/);
+  if (m) { data.duration = parseInt(m[1]); data.unit = 'MINUTES'; return data; }
+
+  m = text.match(/(\d+)\s*(?:jour|jours|days?|j\b)/);
+  if (m) { data.duration = parseInt(m[1]); data.unit = 'DAYS'; return data; }
+
+  m = text.match(/(\d+)\s*(?:semaine|semaines|weeks?)/);
+  if (m) { data.duration = parseInt(m[1]); data.unit = 'WEEKS'; return data; }
+
+  m = text.match(/(\d+)\s*(?:mois|months?)/);
+  if (m) { data.duration = parseInt(m[1]) * 30; data.unit = 'DAYS'; return data; }
+
+  // Try word numbers: "une semaine", "trois jours"
+  for (const [word, num] of Object.entries(numWords)) {
+    const r = new RegExp(word + '\\s*(jour|jours|semaine|semaines|heure|heures|minute|minutes)');
+    const wm = text.match(r);
+    if (wm) {
+      data.duration = num;
+      if (wm[1].startsWith('jour')) data.unit = 'DAYS';
+      else if (wm[1].startsWith('semaine')) data.unit = 'WEEKS';
+      else if (wm[1].startsWith('heure')) data.unit = 'HOURS';
+      else if (wm[1].startsWith('minute')) data.unit = 'MINUTES';
+      return data;
+    }
+  }
+
+  return data;
+}
+
+function extractProperty(text) {
+  const data = { property: '', value: '', operator: 'eq' };
+  // Try to extract "propriete X = Y" or "X est Y" patterns
+  let m = text.match(/(?:propriete|propriété)\s+(\S+)\s+(?:est|=|égal|egal|vaut)\s+(.+)/);
+  if (m) { data.property = m[1]; data.value = m[2].trim(); return data; }
+  return data;
+}
+
+function extractPropertyAction(text) {
+  const data = { property: '', value: '' };
+
+  // "contact marketing" or "marketing contact"
+  if (text.includes('marketing') && text.includes('contact')) {
+    data.property = 'hs_marketable_status';
+    data.value = 'true';
+    return data;
+  }
+  if (text.includes('marketing')) {
+    data.property = 'hs_marketable_status';
+    data.value = 'true';
+    return data;
+  }
+
+  // "lifecycle" patterns
+  if (match(text, ['lifecycle', 'cycle de vie'])) {
+    data.property = 'lifecyclestage';
+    if (text.includes('client') || text.includes('customer')) data.value = 'customer';
+    else if (text.includes('lead')) data.value = 'lead';
+    else if (text.includes('mql') || text.includes('marketing qualified')) data.value = 'marketingqualifiedlead';
+    else if (text.includes('sql') || text.includes('sales qualified')) data.value = 'salesqualifiedlead';
+    else if (text.includes('opportunit')) data.value = 'opportunity';
+    else if (text.includes('subscriber') || text.includes('abonne')) data.value = 'subscriber';
+    return data;
+  }
+
+  // "statut" / "status" patterns
+  if (match(text, ['statut', 'status', 'lead status'])) {
+    data.property = 'hs_lead_status';
+    const val = extractAfter(text, ['statut', 'status', 'en ', 'à ', 'a ']);
+    if (val) data.value = val;
+    return data;
+  }
+
+  // Generic "modifier/definir X a/en Y"
+  let m = text.match(/(?:modifier|definir|définir|changer|passer|mettre|set|marquer)\s+(?:le |la |l'|les )?(?:propriete |propriété )?(.+?)(?:\s+(?:à|a|en|=|sur|vers)\s+)(.+)/);
+  if (m) {
+    data.property = m[1].trim();
+    data.value = m[2].trim();
+    return data;
+  }
+
+  // Fallback: just grab what we can
+  m = text.match(/(?:modifier|definir|définir|changer|passer|mettre|set|marquer)\s+(.+)/);
+  if (m) {
+    data.property = m[1].trim().replace(/^(le|la|les|l'|un|une)\s+/, '');
+  }
+
+  return data;
+}
+
+function extractBranch(text) {
+  const data = { property: '', operator: 'eq', value: '', branchName: 'Oui' };
+  let m = text.match(/(?:si|if|vérifier|verifier|check)\s+(?:le |la |l')?(.+?)(?:\s+(?:est|=|contient|contains|égal|egal)\s+)(.+)/);
+  if (m) {
+    data.property = m[1].trim();
+    data.value = m[2].trim();
+    if (text.includes('contient') || text.includes('contains')) data.operator = 'contains';
+  }
+  return data;
+}
+
+function smartSplit(text) {
+  // If the text has no explicit connectors, try to split by detecting action keywords
+  const actionKeywords = [
+    'envoyer', 'envoi', 'email', 'mail',
+    'attendre', 'delai', 'délai', 'pause',
+    'modifier', 'definir', 'définir', 'changer', 'passer', 'mettre à jour', 'mettre a jour', 'marquer',
+    'tâche', 'tache', 'task', 'rappel',
+    'condition', 'vérifier', 'verifier',
+    'contact marketing'
+  ];
+
+  // Find positions of each action keyword
+  const positions = [];
+  actionKeywords.forEach(kw => {
+    let idx = 0;
+    while (true) {
+      const found = text.indexOf(kw, idx);
+      if (found === -1) break;
+      // Don't split if it's part of a trigger phrase at the start
+      if (found > 10 || !match(text.substring(0, found + kw.length + 10), ['quand', 'lorsque', 'déclencheur', 'declencheur', 'trigger', 'formulaire'])) {
+        positions.push(found);
+      }
+      idx = found + kw.length;
+    }
+  });
+
+  // Also detect standalone durations "3 jours", "une semaine"
+  const durRegex = /(?:\d+|un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|quinze|vingt|trente)\s*(?:jour|jours|heure|heures|minute|minutes|semaine|semaines|mois|h\b|j\b|min\b)/g;
+  let durMatch;
+  while ((durMatch = durRegex.exec(text)) !== null) {
+    positions.push(durMatch.index);
+  }
+
+  if (positions.length <= 1) return [text];
+
+  // Sort and deduplicate nearby positions
+  const sorted = [...new Set(positions)].sort((a, b) => a - b);
+  const deduped = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - deduped[deduped.length - 1] > 8) {
+      deduped.push(sorted[i]);
+    }
+  }
+
+  // Split text at these positions
+  const segments = [];
+  for (let i = 0; i < deduped.length; i++) {
+    const start = deduped[i];
+    const end = i < deduped.length - 1 ? deduped[i + 1] : text.length;
+    const seg = text.substring(start, end).trim().replace(/^(et|puis|ensuite|après|apres)\s+/, '');
+    if (seg.length > 2) segments.push(seg);
+  }
+
+  // If there's text before the first action, include it (might be a trigger)
+  if (deduped[0] > 3) {
+    const prefix = text.substring(0, deduped[0]).trim().replace(/\s+(et|puis|ensuite)$/, '');
+    if (prefix.length > 3) segments.unshift(prefix);
+  }
+
+  return segments.length > 0 ? segments : [text];
 }
 
 // ========== HUBSPOT ==========
