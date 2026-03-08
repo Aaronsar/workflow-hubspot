@@ -552,7 +552,7 @@ function buildHubSpotPayload() {
         action.actionTypeId = '0-5';
         action.fields = {
           property_name: step.config?.property || '',
-          value: { staticValue: step.config?.value || '' }
+          value: step.config?.value || ''
         };
         break;
       case 'delay':
