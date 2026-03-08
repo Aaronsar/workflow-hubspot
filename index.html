@@ -593,10 +593,14 @@ function buildHubSpotPayload() {
   }
 
   return {
-    isEnabled: false, flowType: 'WORKFLOW', name, type: 'CONTACT_FLOW', objectTypeId: '0-1',
+    name,
+    type: 'CONTACT_FLOW',
+    objectTypeId: '0-1',
+    isEnabled: false,
     startActionId: actions.length > 0 ? '1' : null,
     nextAvailableActionId: String(actions.length + 1),
-    actions, enrollmentCriteria, crmObjectCreationStatus: 'HAS_COMPLETED'
+    actions,
+    enrollmentCriteria
   };
 }
 
