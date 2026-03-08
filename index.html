@@ -525,11 +525,46 @@ function buildHubSpotPayload() {
     return action;
   });
 
-  const enrollmentCriteria = { shouldReEnroll: false, type: 'EVENT_BASED' };
+  const enrollmentCriteria = { shouldReEnroll: false };
   if (trigger?.config?.triggerType === 'property_change') {
-    enrollmentCriteria.eventFilterBranches = [{ eventTypeId: '4-655002', filters: [{ property: trigger.config.property || '', operator: 'IS_EQUAL_TO', value: trigger.config.value || '' }] }];
+    enrollmentCriteria.type = 'EVENT_BASED';
+    enrollmentCriteria.eventFilterBranches = [{
+      filterBranchType: 'UNIFIED_EVENTS',
+      filterBranchOperator: 'AND',
+      eventTypeId: '4-655002',
+      filters: [{
+        filterType: 'PROPERTY',
+        property: trigger.config.property || '',
+        operation: { operationType: 'STRING', operator: 'IS_EQUAL_TO', includeObjectsWithNoValueSet: false, value: trigger.config.value || '' }
+      }]
+    }];
   } else if (trigger?.config?.triggerType === 'form_submission') {
-    enrollmentCriteria.eventFilterBranches = [{ eventTypeId: '4-1639801', filters: [] }];
+    enrollmentCriteria.type = 'EVENT_BASED';
+    enrollmentCriteria.eventFilterBranches = [{
+      filterBranchType: 'UNIFIED_EVENTS',
+      filterBranchOperator: 'AND',
+      eventTypeId: '4-1639801',
+      filters: trigger.config.formId ? [{
+        filterType: 'PROPERTY',
+        property: 'hs_form_id',
+        operation: { operationType: 'STRING', operator: 'IS_EQUAL_TO', includeObjectsWithNoValueSet: false, value: trigger.config.formId }
+      }] : []
+    }];
+  } else if (trigger?.config?.triggerType === 'list_membership') {
+    enrollmentCriteria.type = 'LIST_BASED';
+    enrollmentCriteria.listFilterBranch = {
+      filterBranchType: 'OR',
+      filterBranchOperator: 'OR',
+      filters: [{ filterType: 'LIST', listId: trigger.config.listId || '' }]
+    };
+  } else {
+    enrollmentCriteria.type = 'EVENT_BASED';
+    enrollmentCriteria.eventFilterBranches = [{
+      filterBranchType: 'UNIFIED_EVENTS',
+      filterBranchOperator: 'AND',
+      eventTypeId: '4-1639801',
+      filters: []
+    }];
   }
 
   return {
