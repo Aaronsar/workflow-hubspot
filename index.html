@@ -3,1215 +3,564 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HubSpot Workflow Builder</title>
+  <title>HubSpot Workflow Builder - Voice</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; overflow: hidden; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0f; color: #e2e8f0; min-height: 100vh; }
 
-    /* Layout */
-    .app { display: grid; grid-template-columns: 240px 1fr 300px; grid-template-rows: 56px 1fr; height: 100vh; }
-    .toolbar { grid-column: 1 / -1; background: #1e293b; border-bottom: 1px solid #334155; display: flex; align-items: center; padding: 0 16px; gap: 12px; }
-    .sidebar { background: #1e293b; border-right: 1px solid #334155; padding: 16px; overflow-y: auto; }
-    .canvas-wrap { position: relative; overflow: hidden; background: #0f172a; background-image: radial-gradient(circle, #1e293b 1px, transparent 1px); background-size: 24px 24px; }
-    .config-panel { background: #1e293b; border-left: 1px solid #334155; padding: 16px; overflow-y: auto; }
+    /* Header */
+    header { display: flex; align-items: center; padding: 16px 24px; border-bottom: 1px solid #1e1e2e; gap: 12px; }
+    header h1 { font-size: 16px; font-weight: 600; }
+    header h1 span { color: #f97316; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .status { font-size: 11px; color: #64748b; display: flex; align-items: center; gap: 6px; }
+    .status .dot { width: 6px; height: 6px; border-radius: 50%; background: #64748b; }
+    .status .dot.on { background: #22c55e; }
 
-    /* Toolbar */
-    .toolbar h1 { font-size: 16px; font-weight: 600; color: #f8fafc; margin-right: auto; }
-    .toolbar h1 span { color: #f97316; }
-    .btn { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
-    .btn-primary { background: #f97316; color: white; }
-    .btn-primary:hover { background: #ea580c; }
-    .btn-secondary { background: #334155; color: #e2e8f0; }
-    .btn-secondary:hover { background: #475569; }
-    .btn-danger { background: #dc2626; color: white; }
-    .btn-danger:hover { background: #b91c1c; }
-    .btn-voice { background: #8b5cf6; color: white; position: relative; }
-    .btn-voice:hover { background: #7c3aed; }
-    .btn-voice.recording { background: #dc2626; animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.4); } 50% { box-shadow: 0 0 0 8px rgba(220,38,38,0); } }
+    /* Buttons */
+    .btn { padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #1e1e2e; }
+    .btn-ghost:hover { background: #1e1e2e; color: #e2e8f0; }
+    .btn-orange { background: #f97316; color: white; }
+    .btn-orange:hover { background: #ea580c; }
+    .btn-red { background: #dc2626; color: white; }
 
-    /* Sidebar */
-    .sidebar h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 12px; }
-    .sidebar h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin: 16px 0 8px; }
-    .node-item { padding: 10px 12px; background: #334155; border-radius: 8px; margin-bottom: 6px; cursor: grab; display: flex; align-items: center; gap: 8px; transition: all 0.2s; font-size: 13px; }
-    .node-item:hover { background: #475569; transform: translateX(4px); }
-    .node-item:active { cursor: grabbing; }
-    .node-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    /* Main layout */
+    main { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
 
-    /* Canvas nodes */
-    .canvas { width: 4000px; height: 4000px; position: relative; }
-    .wf-node { position: absolute; min-width: 180px; background: #1e293b; border: 2px solid #334155; border-radius: 12px; cursor: move; user-select: none; transition: border-color 0.2s, box-shadow 0.2s; }
-    .wf-node:hover { border-color: #475569; }
-    .wf-node.selected { border-color: #f97316; box-shadow: 0 0 0 3px rgba(249,115,22,0.2); }
-    .wf-node-header { padding: 8px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #334155; }
-    .wf-node-header .icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; }
-    .wf-node-header .label { font-size: 12px; font-weight: 600; }
-    .wf-node-body { padding: 8px 12px; font-size: 11px; color: #94a3b8; }
-    .wf-node .handle { position: absolute; width: 12px; height: 12px; background: #475569; border: 2px solid #1e293b; border-radius: 50%; cursor: crosshair; z-index: 5; }
-    .wf-node .handle:hover { background: #f97316; }
-    .wf-node .handle-top { top: -6px; left: 50%; transform: translateX(-50%); }
-    .wf-node .handle-bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
-    .wf-node .delete-btn { position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; background: #dc2626; border-radius: 50%; display: none; align-items: center; justify-content: center; font-size: 10px; cursor: pointer; border: 2px solid #1e293b; color: white; }
-    .wf-node:hover .delete-btn { display: flex; }
+    /* Voice section */
+    .voice-section { text-align: center; padding: 48px 0; }
+    .voice-section h2 { font-size: 22px; font-weight: 300; color: #94a3b8; margin-bottom: 8px; }
+    .voice-section p { font-size: 14px; color: #475569; margin-bottom: 40px; }
 
-    /* Connections SVG */
-    .connections-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
-    .connections-svg path { stroke: #475569; stroke-width: 2; fill: none; }
-    .connections-svg path:hover { stroke: #f97316; stroke-width: 3; }
-    .temp-connection { stroke: #f97316 !important; stroke-dasharray: 6; }
+    .mic-btn { width: 100px; height: 100px; border-radius: 50%; border: 3px solid #1e1e2e; background: #111118; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; transition: all 0.3s; position: relative; }
+    .mic-btn:hover { border-color: #f97316; background: #1a1a24; }
+    .mic-btn.recording { border-color: #dc2626; background: #1a0a0a; animation: glow 2s infinite; }
+    .mic-btn svg { width: 36px; height: 36px; fill: #94a3b8; transition: fill 0.3s; }
+    .mic-btn.recording svg { fill: #dc2626; }
+    .mic-btn.processing { border-color: #f97316; }
+    .mic-btn.processing svg { fill: #f97316; animation: spin 1s linear infinite; }
+    @keyframes glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0.3); } 50% { box-shadow: 0 0 0 20px rgba(220,38,38,0); } }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
 
-    /* Config panel */
-    .config-panel h2 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: #f8fafc; }
-    .config-panel .empty { text-align: center; color: #64748b; margin-top: 40px; font-size: 13px; }
-    .form-group { margin-bottom: 14px; }
-    .form-group label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 4px; }
-    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 10px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 13px; outline: none; }
-    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #f97316; }
-    .form-group textarea { resize: vertical; min-height: 60px; }
+    .mic-label { font-size: 13px; color: #475569; }
+    .mic-label.recording { color: #dc2626; }
+    .mic-label.processing { color: #f97316; }
 
-    /* Voice panel */
-    .voice-panel { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 16px 24px; display: none; align-items: center; gap: 16px; z-index: 100; box-shadow: 0 8px 32px rgba(0,0,0,0.4); min-width: 400px; }
-    .voice-panel.active { display: flex; }
-    .voice-wave { display: flex; align-items: center; gap: 3px; height: 24px; }
-    .voice-wave span { width: 3px; background: #8b5cf6; border-radius: 2px; animation: wave 0.8s infinite ease-in-out; }
-    .voice-wave span:nth-child(2) { animation-delay: 0.1s; }
-    .voice-wave span:nth-child(3) { animation-delay: 0.2s; }
-    .voice-wave span:nth-child(4) { animation-delay: 0.3s; }
-    .voice-wave span:nth-child(5) { animation-delay: 0.4s; }
-    @keyframes wave { 0%, 100% { height: 6px; } 50% { height: 24px; } }
-    .voice-text { flex: 1; font-size: 13px; color: #e2e8f0; max-height: 60px; overflow-y: auto; }
-    .voice-text.placeholder { color: #64748b; font-style: italic; }
+    /* Transcript display */
+    .transcript-box { background: #111118; border: 1px solid #1e1e2e; border-radius: 12px; padding: 20px; margin-top: 32px; text-align: left; display: none; }
+    .transcript-box.visible { display: block; }
+    .transcript-box .label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #475569; margin-bottom: 8px; }
+    .transcript-box .text { font-size: 14px; line-height: 1.6; color: #cbd5e1; }
+    .transcript-box .text.interim { color: #64748b; font-style: italic; }
 
-    /* HubSpot setup modal */
-    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 200; }
-    .modal-overlay.active { display: flex; }
-    .modal { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 32px; max-width: 500px; width: 90%; }
-    .modal h2 { font-size: 18px; margin-bottom: 8px; }
-    .modal p { font-size: 13px; color: #94a3b8; margin-bottom: 16px; line-height: 1.5; }
-    .modal .steps { background: #0f172a; border-radius: 8px; padding: 16px; margin-bottom: 16px; font-size: 12px; color: #94a3b8; line-height: 1.8; }
-    .modal .steps strong { color: #f8fafc; }
-    .modal .actions { display: flex; gap: 8px; justify-content: flex-end; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-    .status-dot.connected { background: #22c55e; }
-    .status-dot.disconnected { background: #64748b; }
+    /* Workflow display */
+    .workflow-section { margin-top: 40px; display: none; }
+    .workflow-section.visible { display: block; }
+    .workflow-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .workflow-header h3 { font-size: 16px; font-weight: 600; }
+    .workflow-actions { display: flex; gap: 8px; }
 
-    /* Workflow name input */
-    .wf-name-input { background: transparent; border: 1px solid transparent; color: #f8fafc; font-size: 16px; font-weight: 600; padding: 4px 8px; border-radius: 6px; width: 200px; }
-    .wf-name-input:hover { border-color: #334155; }
+    .wf-name-input { background: transparent; border: 1px solid #1e1e2e; color: #f8fafc; font-size: 14px; padding: 6px 12px; border-radius: 6px; width: 240px; }
     .wf-name-input:focus { border-color: #f97316; outline: none; }
 
+    /* Workflow nodes */
+    .workflow-list { position: relative; padding-left: 28px; }
+    .workflow-list::before { content: ''; position: absolute; left: 13px; top: 20px; bottom: 20px; width: 2px; background: #1e1e2e; }
+
+    .wf-step { position: relative; margin-bottom: 8px; display: flex; align-items: stretch; }
+    .wf-step .dot { position: absolute; left: -22px; top: 16px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #1e1e2e; background: #0a0a0f; z-index: 1; }
+    .wf-step.trigger .dot { border-color: #22c55e; background: #22c55e; }
+    .wf-step.action .dot { border-color: #3b82f6; background: #3b82f6; }
+    .wf-step.delay .dot { border-color: #94a3b8; background: #94a3b8; }
+    .wf-step.branch .dot { border-color: #a78bfa; background: #a78bfa; }
+
+    .wf-card { flex: 1; background: #111118; border: 1px solid #1e1e2e; border-radius: 10px; padding: 14px 18px; transition: border-color 0.2s; }
+    .wf-card:hover { border-color: #334155; }
+    .wf-card .step-type { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .wf-step.trigger .step-type { color: #22c55e; }
+    .wf-step.action .step-type { color: #3b82f6; }
+    .wf-step.delay .step-type { color: #94a3b8; }
+    .wf-step.branch .step-type { color: #a78bfa; }
+    .wf-card .step-desc { font-size: 14px; color: #e2e8f0; }
+    .wf-card .step-detail { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+    .wf-step .remove-btn { position: absolute; right: -8px; top: -6px; width: 20px; height: 20px; border-radius: 50%; background: #dc2626; border: 2px solid #0a0a0f; color: white; font-size: 10px; cursor: pointer; display: none; align-items: center; justify-content: center; }
+    .wf-step:hover .remove-btn { display: flex; }
+
+    /* Settings modal */
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 100; }
+    .modal-bg.open { display: flex; }
+    .modal { background: #111118; border: 1px solid #1e1e2e; border-radius: 14px; padding: 28px; width: 440px; max-width: 90vw; }
+    .modal h2 { font-size: 16px; margin-bottom: 20px; }
+    .modal label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 4px; margin-top: 14px; }
+    .modal input { width: 100%; padding: 10px 12px; background: #0a0a0f; border: 1px solid #1e1e2e; border-radius: 8px; color: #e2e8f0; font-size: 13px; }
+    .modal input:focus { border-color: #f97316; outline: none; }
+    .modal .hint { font-size: 11px; color: #475569; margin-top: 4px; line-height: 1.4; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
+
     /* Toast */
-    .toast { position: fixed; top: 70px; right: 20px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px 20px; font-size: 13px; z-index: 300; transform: translateX(120%); transition: transform 0.3s; }
-    .toast.show { transform: translateX(0); }
-    .toast.success { border-color: #22c55e; }
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1e1e2e; border: 1px solid #334155; border-radius: 10px; padding: 12px 24px; font-size: 13px; z-index: 200; transition: transform 0.3s; }
+    .toast.show { transform: translateX(-50%) translateY(0); }
     .toast.error { border-color: #dc2626; }
+    .toast.success { border-color: #22c55e; }
+
+    /* Empty state */
+    .empty-state { text-align: center; padding: 60px 0; }
+    .empty-state svg { width: 48px; height: 48px; fill: #1e1e2e; margin-bottom: 16px; }
+    .empty-state p { color: #334155; font-size: 14px; }
   </style>
 </head>
 <body>
 
-<div class="app">
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <h1><span>&#9670;</span> HubSpot Workflows</h1>
-    <input type="text" class="wf-name-input" id="wfName" value="Mon Workflow" placeholder="Nom du workflow">
-    <button class="btn btn-voice" id="voiceBtn" onclick="toggleVoice()">&#127908; Vocal</button>
-    <button class="btn btn-secondary" onclick="saveWorkflow()">&#128190; Sauvegarder</button>
-    <button class="btn btn-secondary" onclick="showHubspotModal()">&#9881; HubSpot</button>
-    <button class="btn btn-primary" onclick="deployToHubspot()">&#9650; Deployer</button>
-    <span class="status-dot" id="statusDot" title="Non connecte"></span>
+<header>
+  <h1><span>&#9670;</span> Workflow Voice Builder</h1>
+  <div class="header-right">
+    <div class="status">
+      <div class="dot" id="openaiDot"></div>
+      <span id="openaiStatus">OpenAI</span>
+    </div>
+    <div class="status">
+      <div class="dot" id="hubspotDot"></div>
+      <span id="hubspotStatus">HubSpot</span>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="openSettings()">Reglages</button>
+  </div>
+</header>
+
+<main>
+  <!-- Voice section -->
+  <div class="voice-section">
+    <h2>Decrivez votre workflow</h2>
+    <p>Parlez naturellement, comme si vous expliquiez a un collegue.</p>
+
+    <button class="mic-btn" id="micBtn" onclick="toggleRecording()">
+      <svg id="micIcon" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+    </button>
+    <div class="mic-label" id="micLabel">Cliquez pour parler</div>
+
+    <div class="transcript-box" id="transcriptBox">
+      <div class="label">Transcription</div>
+      <div class="text" id="transcriptText"></div>
+    </div>
   </div>
 
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <h2>Composants</h2>
-
-    <h3>&#9889; Declencheurs</h3>
-    <div class="node-item" draggable="true" ondragstart="onDragStart(event, 'trigger_property')" data-type="trigger_property">
-      <div class="node-icon" style="background:#065f46;color:#34d399">&#9889;</div>
-      Changement propriete
+  <!-- Workflow result -->
+  <div class="workflow-section" id="workflowSection">
+    <div class="workflow-header">
+      <input type="text" class="wf-name-input" id="wfName" value="Mon Workflow" placeholder="Nom du workflow">
+      <div class="workflow-actions">
+        <button class="btn btn-ghost btn-sm" onclick="clearWorkflow()">Effacer</button>
+        <button class="btn btn-ghost btn-sm" onclick="saveWorkflow()">Sauvegarder</button>
+        <button class="btn btn-orange btn-sm" onclick="deployToHubspot()">Deployer sur HubSpot</button>
+      </div>
     </div>
-    <div class="node-item" draggable="true" ondragstart="onDragStart(event, 'trigger_form')" data-type="trigger_form">
-      <div class="node-icon" style="background:#1e3a5f;color:#60a5fa">&#128196;</div>
-      Soumission formulaire
-    </div>
-    <div class="node-item" draggable="true" ondragstart="onDragStart(event, 'trigger_list')" data-type="trigger_list">
-      <div class="node-icon" style="background:#3b0764;color:#c084fc">&#128203;</div>
-      Ajout a une liste
-    </div>
-
-    <h3>&#9881; Actions</h3>
-    <div class="node-item" draggable="true" ondragstart="onDragStart(event, 'send_email')">
-      <div class="node-icon" style="background:#1e3a5f;color:#60a5fa">&#9993;</div>
-      Envoyer email
-    </div>
-    <div class="node-item" draggable="true" ondragstart="onDragStart(event, 'set_property')">
-      <div class="node-icon" style="background:#713f12;color:#fbbf24">&#9998;</div>
-      Modifier propriete
-    </div>
-    <div class="node-item" draggable="true" ondragstart="onDragStart(event, 'delay')">
-      <div class="node-icon" style="background:#44403c;color:#a8a29e">&#9202;</div>
-      Delai
-    </div>
-    <div class="node-item" draggable="true" ondragstart="onDragStart(event, 'create_task')">
-      <div class="node-icon" style="background:#14532d;color:#4ade80">&#10003;</div>
-      Creer tache
-    </div>
-    <div class="node-item" draggable="true" ondragstart="onDragStart(event, 'branch')">
-      <div class="node-icon" style="background:#4a1d96;color:#a78bfa">&#9699;</div>
-      Condition Si/Alors
-    </div>
-
-    <h3 style="margin-top:24px">&#128190; Sauvegardes</h3>
-    <div id="savedList" style="font-size:12px;color:#64748b">Aucun workflow sauvegarde</div>
+    <div class="workflow-list" id="workflowList"></div>
   </div>
+</main>
 
-  <!-- Canvas -->
-  <div class="canvas-wrap" id="canvasWrap" ondrop="onDrop(event)" ondragover="event.preventDefault()">
-    <svg class="connections-svg" id="connectionsSvg"></svg>
-    <div class="canvas" id="canvas"></div>
-  </div>
-
-  <!-- Config Panel -->
-  <div class="config-panel" id="configPanel">
-    <h2>Configuration</h2>
-    <div class="empty" id="configEmpty">Selectionnez un noeud pour le configurer</div>
-    <div id="configContent" style="display:none"></div>
-  </div>
-</div>
-
-<!-- Voice Panel -->
-<div class="voice-panel" id="voicePanel">
-  <div class="voice-wave">
-    <span></span><span></span><span></span><span></span><span></span>
-  </div>
-  <div class="voice-text placeholder" id="voiceText">Parlez pour decrire votre workflow...</div>
-  <button class="btn btn-danger" onclick="toggleVoice()" style="padding:6px 12px">&#9632; Stop</button>
-</div>
-
-<!-- HubSpot Modal -->
-<div class="modal-overlay" id="hubspotModal">
+<!-- Settings modal -->
+<div class="modal-bg" id="settingsModal">
   <div class="modal">
-    <h2>&#9881; Connexion HubSpot</h2>
-    <p>Connectez votre compte HubSpot avec un token d'app privee.</p>
-    <div class="steps">
-      <strong>1.</strong> Allez dans HubSpot &gt; Settings &gt; Integrations &gt; Private Apps<br>
-      <strong>2.</strong> Creez une app avec les scopes : <strong>automation, crm.objects.contacts.read/write, content, forms</strong><br>
-      <strong>3.</strong> Copiez le token d'acces ci-dessous
-    </div>
-    <div class="form-group">
-      <label>Token d'acces</label>
-      <input type="password" id="hubspotToken" placeholder="pat-na1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-    </div>
-    <div id="tokenStatus" style="font-size:12px;margin-bottom:12px;color:#64748b"></div>
-    <div class="actions">
-      <button class="btn btn-secondary" onclick="closeModal()">Annuler</button>
-      <button class="btn btn-primary" onclick="validateToken()">Valider</button>
+    <h2>Reglages</h2>
+
+    <label>Cle API OpenAI</label>
+    <input type="password" id="openaiKeyInput" placeholder="sk-...">
+    <div class="hint">Necessaire pour comprendre vos instructions vocales. Creez une cle sur platform.openai.com</div>
+
+    <label>Token HubSpot (Private App)</label>
+    <input type="password" id="hubspotTokenInput" placeholder="pat-na1-...">
+    <div class="hint">Settings &gt; Integrations &gt; Private Apps. Scopes: automation, crm.objects.contacts.read/write</div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeSettings()">Annuler</button>
+      <button class="btn btn-orange" onclick="saveSettings()">Enregistrer</button>
     </div>
   </div>
 </div>
 
-<!-- Toast -->
 <div class="toast" id="toast"></div>
 
 <script>
-// ========== STATE ==========
-let nodes = [];
-let connections = [];
-let selectedNodeId = null;
-let nextId = 1;
-let dragOffset = { x: 0, y: 0 };
-let draggingNodeId = null;
-let connectingFrom = null;
-let tempLine = null;
+// ===== STATE =====
+let openaiKey = localStorage.getItem('openai_key') || '';
 let hubspotToken = localStorage.getItem('hubspot_token') || '';
-let canvasOffset = { x: 0, y: 0 };
-
-// Node type config
-const NODE_TYPES = {
-  trigger_property: { label: 'Changement propriete', icon: '&#9889;', color: '#065f46', iconColor: '#34d399', category: 'trigger' },
-  trigger_form: { label: 'Soumission formulaire', icon: '&#128196;', color: '#1e3a5f', iconColor: '#60a5fa', category: 'trigger' },
-  trigger_list: { label: 'Ajout a une liste', icon: '&#128203;', color: '#3b0764', iconColor: '#c084fc', category: 'trigger' },
-  send_email: { label: 'Envoyer email', icon: '&#9993;', color: '#1e3a5f', iconColor: '#60a5fa', category: 'action' },
-  set_property: { label: 'Modifier propriete', icon: '&#9998;', color: '#713f12', iconColor: '#fbbf24', category: 'action' },
-  delay: { label: 'Delai', icon: '&#9202;', color: '#44403c', iconColor: '#a8a29e', category: 'action' },
-  create_task: { label: 'Creer tache', icon: '&#10003;', color: '#14532d', iconColor: '#4ade80', category: 'action' },
-  branch: { label: 'Condition Si/Alors', icon: '&#9699;', color: '#4a1d96', iconColor: '#a78bfa', category: 'action' },
-};
-
-// ========== INIT ==========
-window.addEventListener('DOMContentLoaded', () => {
-  if (hubspotToken) {
-    document.getElementById('statusDot').classList.add('connected');
-    document.getElementById('statusDot').title = 'Connecte';
-  }
-  loadSavedList();
-  setupCanvasPan();
-});
-
-// ========== DRAG & DROP FROM SIDEBAR ==========
-function onDragStart(e, type) {
-  e.dataTransfer.setData('nodeType', type);
-  e.dataTransfer.effectAllowed = 'move';
-}
-
-function onDrop(e) {
-  e.preventDefault();
-  const type = e.dataTransfer.getData('nodeType');
-  if (!type) return;
-
-  const wrap = document.getElementById('canvasWrap');
-  const rect = wrap.getBoundingClientRect();
-  const x = e.clientX - rect.left + wrap.scrollLeft;
-  const y = e.clientY - rect.top + wrap.scrollTop;
-
-  // Only one trigger allowed
-  if (NODE_TYPES[type].category === 'trigger' && nodes.some(n => NODE_TYPES[n.type].category === 'trigger')) {
-    showToast('Un seul declencheur par workflow', 'error');
-    return;
-  }
-
-  addNode(type, x, y);
-}
-
-function addNode(type, x, y, data = {}) {
-  const id = 'node_' + nextId++;
-  const node = { id, type, x, y, data: { ...getDefaultData(type), ...data } };
-  nodes.push(node);
-  renderNode(node);
-  selectNode(id);
-  return id;
-}
-
-function getDefaultData(type) {
-  switch (type) {
-    case 'trigger_property': return { property: '', value: '', operator: 'eq' };
-    case 'trigger_form': return { formId: '', formName: '' };
-    case 'trigger_list': return { listId: '', listName: '' };
-    case 'send_email': return { emailId: '', emailName: '' };
-    case 'set_property': return { property: '', value: '' };
-    case 'delay': return { duration: 1, unit: 'DAYS' };
-    case 'create_task': return { subject: '', body: '', priority: 'MEDIUM' };
-    case 'branch': return { property: '', operator: 'eq', value: '', branchName: 'Oui' };
-    default: return {};
-  }
-}
-
-// ========== RENDER NODE ==========
-function renderNode(node) {
-  const t = NODE_TYPES[node.type];
-  const el = document.createElement('div');
-  el.className = 'wf-node';
-  el.id = node.id;
-  el.style.left = node.x + 'px';
-  el.style.top = node.y + 'px';
-  el.innerHTML = `
-    ${t.category !== 'trigger' ? '<div class="handle handle-top"></div>' : ''}
-    <div class="wf-node-header">
-      <div class="icon" style="background:${t.color};color:${t.iconColor}">${t.icon}</div>
-      <div class="label">${t.label}</div>
-    </div>
-    <div class="wf-node-body" id="${node.id}_body">${getNodeSummary(node)}</div>
-    <div class="handle handle-bottom"></div>
-    <div class="delete-btn" onclick="event.stopPropagation();deleteNode('${node.id}')">&#10005;</div>
-  `;
-
-  // Node drag
-  el.addEventListener('mousedown', (e) => {
-    if (e.target.classList.contains('handle') || e.target.classList.contains('delete-btn')) return;
-    e.stopPropagation();
-    draggingNodeId = node.id;
-    const rect = el.getBoundingClientRect();
-    dragOffset.x = e.clientX - rect.left;
-    dragOffset.y = e.clientY - rect.top;
-    selectNode(node.id);
-  });
-
-  // Handle connection start
-  el.querySelector('.handle-bottom').addEventListener('mousedown', (e) => {
-    e.stopPropagation();
-    connectingFrom = node.id;
-    const svg = document.getElementById('connectionsSvg');
-    tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    tempLine.classList.add('temp-connection');
-    svg.appendChild(tempLine);
-  });
-
-  // Handle connection end (top handle)
-  const topHandle = el.querySelector('.handle-top');
-  if (topHandle) {
-    topHandle.addEventListener('mouseup', (e) => {
-      if (connectingFrom && connectingFrom !== node.id) {
-        // Check no duplicate
-        if (!connections.some(c => c.from === connectingFrom && c.to === node.id)) {
-          connections.push({ from: connectingFrom, to: node.id });
-          renderConnections();
-        }
-      }
-      connectingFrom = null;
-      if (tempLine) { tempLine.remove(); tempLine = null; }
-    });
-  }
-
-  document.getElementById('canvas').appendChild(el);
-}
-
-function getNodeSummary(node) {
-  const d = node.data;
-  switch (node.type) {
-    case 'trigger_property': return d.property ? `${d.property} ${d.operator} ${d.value}` : 'Non configure';
-    case 'trigger_form': return d.formName || 'Non configure';
-    case 'trigger_list': return d.listName || 'Non configure';
-    case 'send_email': return d.emailName || 'Non configure';
-    case 'set_property': return d.property ? `${d.property} = ${d.value}` : 'Non configure';
-    case 'delay': return `${d.duration} ${d.unit.toLowerCase()}`;
-    case 'create_task': return d.subject || 'Non configure';
-    case 'branch': return d.property ? `Si ${d.property} ${d.operator} ${d.value}` : 'Non configure';
-    default: return '';
-  }
-}
-
-// ========== MOUSE EVENTS ==========
-document.addEventListener('mousemove', (e) => {
-  // Node dragging
-  if (draggingNodeId) {
-    const wrap = document.getElementById('canvasWrap');
-    const rect = wrap.getBoundingClientRect();
-    const node = nodes.find(n => n.id === draggingNodeId);
-    node.x = e.clientX - rect.left + wrap.scrollLeft - dragOffset.x;
-    node.y = e.clientY - rect.top + wrap.scrollTop - dragOffset.y;
-    const el = document.getElementById(draggingNodeId);
-    el.style.left = node.x + 'px';
-    el.style.top = node.y + 'px';
-    renderConnections();
-  }
-
-  // Connection drawing
-  if (connectingFrom && tempLine) {
-    const fromEl = document.getElementById(connectingFrom);
-    const handle = fromEl.querySelector('.handle-bottom');
-    const wrap = document.getElementById('canvasWrap');
-    const wrapRect = wrap.getBoundingClientRect();
-    const hRect = handle.getBoundingClientRect();
-    const x1 = hRect.left - wrapRect.left + wrap.scrollLeft + 6;
-    const y1 = hRect.top - wrapRect.top + wrap.scrollTop + 6;
-    const x2 = e.clientX - wrapRect.left + wrap.scrollLeft;
-    const y2 = e.clientY - wrapRect.top + wrap.scrollTop;
-    const midY = (y1 + y2) / 2;
-    tempLine.setAttribute('d', `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`);
-  }
-});
-
-document.addEventListener('mouseup', () => {
-  draggingNodeId = null;
-  connectingFrom = null;
-  if (tempLine) { tempLine.remove(); tempLine = null; }
-});
-
-// ========== CONNECTIONS ==========
-function renderConnections() {
-  const svg = document.getElementById('connectionsSvg');
-  const wrap = document.getElementById('canvasWrap');
-  // Keep temp line if exists
-  svg.querySelectorAll('path:not(.temp-connection)').forEach(p => p.remove());
-
-  connections.forEach(conn => {
-    const fromEl = document.getElementById(conn.from);
-    const toEl = document.getElementById(conn.to);
-    if (!fromEl || !toEl) return;
-
-    const wrapRect = wrap.getBoundingClientRect();
-    const fromHandle = fromEl.querySelector('.handle-bottom');
-    const toHandle = toEl.querySelector('.handle-top');
-    if (!fromHandle || !toHandle) return;
-
-    const fRect = fromHandle.getBoundingClientRect();
-    const tRect = toHandle.getBoundingClientRect();
-    const x1 = fRect.left - wrapRect.left + wrap.scrollLeft + 6;
-    const y1 = fRect.top - wrapRect.top + wrap.scrollTop + 6;
-    const x2 = tRect.left - wrapRect.left + wrap.scrollLeft + 6;
-    const y2 = tRect.top - wrapRect.top + wrap.scrollTop + 6;
-    const midY = (y1 + y2) / 2;
-
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`);
-    path.style.pointerEvents = 'stroke';
-    path.style.cursor = 'pointer';
-    path.addEventListener('dblclick', () => {
-      connections = connections.filter(c => c !== conn);
-      renderConnections();
-    });
-    svg.appendChild(path);
-  });
-}
-
-// ========== CANVAS PAN ==========
-function setupCanvasPan() {
-  const wrap = document.getElementById('canvasWrap');
-  let panning = false, startX, startY, scrollX, scrollY;
-
-  wrap.addEventListener('mousedown', (e) => {
-    if (e.target === wrap || e.target.id === 'canvas') {
-      panning = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      scrollX = wrap.scrollLeft;
-      scrollY = wrap.scrollTop;
-      wrap.style.cursor = 'grabbing';
-      selectNode(null);
-    }
-  });
-
-  wrap.addEventListener('mousemove', (e) => {
-    if (!panning) return;
-    wrap.scrollLeft = scrollX - (e.clientX - startX);
-    wrap.scrollTop = scrollY - (e.clientY - startY);
-  });
-
-  wrap.addEventListener('mouseup', () => { panning = false; wrap.style.cursor = 'default'; });
-  wrap.addEventListener('mouseleave', () => { panning = false; wrap.style.cursor = 'default'; });
-}
-
-// ========== NODE SELECTION & CONFIG ==========
-function selectNode(id) {
-  selectedNodeId = id;
-  document.querySelectorAll('.wf-node').forEach(el => el.classList.remove('selected'));
-  if (id) {
-    document.getElementById(id)?.classList.add('selected');
-    showConfig(id);
-  } else {
-    document.getElementById('configEmpty').style.display = 'block';
-    document.getElementById('configContent').style.display = 'none';
-  }
-}
-
-function deleteNode(id) {
-  nodes = nodes.filter(n => n.id !== id);
-  connections = connections.filter(c => c.from !== id && c.to !== id);
-  document.getElementById(id)?.remove();
-  renderConnections();
-  if (selectedNodeId === id) selectNode(null);
-}
-
-function showConfig(id) {
-  const node = nodes.find(n => n.id === id);
-  if (!node) return;
-
-  document.getElementById('configEmpty').style.display = 'none';
-  const content = document.getElementById('configContent');
-  content.style.display = 'block';
-
-  let html = `<h2 style="font-size:13px;margin-bottom:12px">${NODE_TYPES[node.type].label}</h2>`;
-
-  switch (node.type) {
-    case 'trigger_property':
-      html += field('Propriete', 'text', 'property', node.data.property, 'ex: lifecyclestage');
-      html += selectField('Operateur', 'operator', node.data.operator, [
-        ['eq', 'Egal a'], ['neq', 'Different de'], ['contains', 'Contient'], ['gt', 'Superieur a'], ['lt', 'Inferieur a']
-      ]);
-      html += field('Valeur', 'text', 'value', node.data.value, 'ex: customer');
-      break;
-    case 'trigger_form':
-      html += field('ID Formulaire', 'text', 'formId', node.data.formId, 'ID du formulaire HubSpot');
-      html += field('Nom (memo)', 'text', 'formName', node.data.formName, 'Nom pour reference');
-      break;
-    case 'trigger_list':
-      html += field('ID Liste', 'text', 'listId', node.data.listId, 'ID de la liste');
-      html += field('Nom (memo)', 'text', 'listName', node.data.listName, 'Nom pour reference');
-      break;
-    case 'send_email':
-      html += field('ID Email', 'text', 'emailId', node.data.emailId, 'ID de l\'email marketing');
-      html += field('Nom (memo)', 'text', 'emailName', node.data.emailName, 'Nom pour reference');
-      break;
-    case 'set_property':
-      html += field('Propriete', 'text', 'property', node.data.property, 'ex: lifecyclestage');
-      html += field('Nouvelle valeur', 'text', 'value', node.data.value, 'ex: customer');
-      break;
-    case 'delay':
-      html += field('Duree', 'number', 'duration', node.data.duration, '1');
-      html += selectField('Unite', 'unit', node.data.unit, [
-        ['MINUTES', 'Minutes'], ['HOURS', 'Heures'], ['DAYS', 'Jours'], ['WEEKS', 'Semaines']
-      ]);
-      break;
-    case 'create_task':
-      html += field('Sujet', 'text', 'subject', node.data.subject, 'Sujet de la tache');
-      html += `<div class="form-group"><label>Description</label><textarea oninput="updateNodeData('body', this.value)" placeholder="Details...">${node.data.body || ''}</textarea></div>`;
-      html += selectField('Priorite', 'priority', node.data.priority, [
-        ['LOW', 'Basse'], ['MEDIUM', 'Moyenne'], ['HIGH', 'Haute']
-      ]);
-      break;
-    case 'branch':
-      html += field('Propriete', 'text', 'property', node.data.property, 'ex: email');
-      html += selectField('Operateur', 'operator', node.data.operator, [
-        ['eq', 'Egal a'], ['neq', 'Different de'], ['contains', 'Contient'], ['is_known', 'Est connu'], ['is_unknown', 'Est inconnu']
-      ]);
-      html += field('Valeur', 'text', 'value', node.data.value, 'ex: @gmail.com');
-      html += field('Nom branche', 'text', 'branchName', node.data.branchName, 'ex: Oui');
-      break;
-  }
-  content.innerHTML = html;
-}
-
-function field(label, type, key, value, placeholder) {
-  return `<div class="form-group"><label>${label}</label><input type="${type}" value="${value || ''}" placeholder="${placeholder}" oninput="updateNodeData('${key}', this.value)"></div>`;
-}
-
-function selectField(label, key, value, options) {
-  let opts = options.map(([v, l]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${l}</option>`).join('');
-  return `<div class="form-group"><label>${label}</label><select onchange="updateNodeData('${key}', this.value)">${opts}</select></div>`;
-}
-
-function updateNodeData(key, value) {
-  const node = nodes.find(n => n.id === selectedNodeId);
-  if (!node) return;
-  node.data[key] = value;
-  const body = document.getElementById(node.id + '_body');
-  if (body) body.textContent = getNodeSummary(node);
-}
-
-// ========== VOICE ==========
-let recognition = null;
+let workflowSteps = JSON.parse(localStorage.getItem('current_workflow') || '[]');
 let isRecording = false;
-let voiceTranscript = '';
+let recognition = null;
+let fullTranscript = '';
 
-function toggleVoice() {
-  if (isRecording) {
-    stopVoice();
-  } else {
-    startVoice();
-  }
+// ===== INIT =====
+window.addEventListener('DOMContentLoaded', () => {
+  updateStatusDots();
+  if (workflowSteps.length > 0) renderWorkflow();
+  loadSavedList();
+});
+
+function updateStatusDots() {
+  document.getElementById('openaiDot').className = 'dot' + (openaiKey ? ' on' : '');
+  document.getElementById('hubspotDot').className = 'dot' + (hubspotToken ? ' on' : '');
 }
 
-function startVoice() {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    showToast('Votre navigateur ne supporte pas la reconnaissance vocale. Utilisez Chrome.', 'error');
-    return;
-  }
+// ===== VOICE RECORDING =====
+function toggleRecording() {
+  isRecording ? stopRecording() : startRecording();
+}
 
-  recognition = new SpeechRecognition();
+function startRecording() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { toast('Utilisez Chrome pour la reconnaissance vocale', 'error'); return; }
+  if (!openaiKey) { toast('Ajoutez votre cle OpenAI dans les reglages', 'error'); openSettings(); return; }
+
+  recognition = new SR();
   recognition.lang = 'fr-FR';
   recognition.continuous = true;
   recognition.interimResults = true;
+  fullTranscript = '';
 
-  voiceTranscript = '';
+  const box = document.getElementById('transcriptBox');
+  const text = document.getElementById('transcriptText');
+  box.classList.add('visible');
+  text.textContent = '';
+  text.className = 'text interim';
+
   recognition.onresult = (e) => {
     let interim = '';
     let final = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) {
-        final += t;
-      } else {
-        interim += t;
-      }
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
     }
-    if (final) voiceTranscript += final + ' ';
-    const textEl = document.getElementById('voiceText');
-    textEl.classList.remove('placeholder');
-    textEl.textContent = voiceTranscript + interim;
+    if (final) fullTranscript += final + ' ';
+    text.textContent = fullTranscript + interim;
+    text.className = interim ? 'text interim' : 'text';
   };
 
   recognition.onerror = (e) => {
-    console.error('Speech error:', e.error);
-    if (e.error !== 'no-speech') {
-      showToast('Erreur micro: ' + e.error, 'error');
-      stopVoice();
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      toast('Erreur micro: ' + e.error, 'error');
+      stopRecording();
     }
   };
 
   recognition.onend = () => {
-    // Auto-restart if still recording
-    if (isRecording) {
-      try { recognition.start(); } catch(e) {}
-    }
+    if (isRecording) try { recognition.start(); } catch(e) {}
   };
 
   recognition.start();
   isRecording = true;
-  document.getElementById('voiceBtn').classList.add('recording');
-  document.getElementById('voiceBtn').innerHTML = '&#128308; Stop';
-  document.getElementById('voicePanel').classList.add('active');
+  document.getElementById('micBtn').classList.add('recording');
+  document.getElementById('micLabel').textContent = 'Parlez... cliquez pour terminer';
+  document.getElementById('micLabel').className = 'mic-label recording';
 }
 
-function stopVoice() {
-  if (recognition) {
-    recognition.stop();
-    recognition = null;
-  }
+function stopRecording() {
+  if (recognition) { recognition.stop(); recognition = null; }
   isRecording = false;
-  document.getElementById('voiceBtn').classList.remove('recording');
-  document.getElementById('voiceBtn').innerHTML = '&#127908; Vocal';
+  document.getElementById('micBtn').classList.remove('recording');
 
-  // Process the transcript
-  if (voiceTranscript.trim()) {
-    parseVoiceCommand(voiceTranscript.trim());
+  const transcript = fullTranscript.trim();
+  if (transcript.length < 5) {
+    document.getElementById('micBtn').classList.remove('processing');
+    document.getElementById('micLabel').textContent = 'Cliquez pour parler';
+    document.getElementById('micLabel').className = 'mic-label';
+    return;
   }
 
-  // Hide panel after a delay
-  setTimeout(() => {
-    document.getElementById('voicePanel').classList.remove('active');
-    document.getElementById('voiceText').textContent = 'Parlez pour decrire votre workflow...';
-    document.getElementById('voiceText').classList.add('placeholder');
-  }, 2000);
+  // Send to AI
+  document.getElementById('micBtn').classList.add('processing');
+  document.getElementById('micLabel').textContent = 'Analyse en cours...';
+  document.getElementById('micLabel').className = 'mic-label processing';
+  document.getElementById('micIcon').innerHTML = '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>';
+
+  parseWithAI(transcript);
 }
 
-function parseVoiceCommand(text) {
-  const lower = text.toLowerCase()
-    .replace(/['']/g, "'")
-    .replace(/\b(euh|hum|hmm|bon|alors|donc|voila|ok)\b/g, '') // filler words
-    .replace(/\s+/g, ' ').trim();
+// ===== AI PARSING =====
+async function parseWithAI(transcript) {
+  const systemPrompt = `Tu es un assistant qui transforme des descriptions vocales en workflows HubSpot structurés.
 
-  // Split into sequential steps using connectors
-  const splitters = /\b(?:puis|ensuite|apres|après|et puis|et ensuite|et apres|et après|après ça|apres ca|puis après|puis apres|deuxièmement|troisièmement|quatrièmement|deuxiemement|troisiemement|quatriemement|étape suivante|etape suivante|step|next|virgule)\b|[,;\.]+\s/g;
-  const segments = lower.split(splitters).map(s => s.trim()).filter(s => s.length > 2);
+L'utilisateur va te décrire un workflow en langage naturel (souvent en français). Tu dois extraire les étapes et retourner un JSON.
 
-  // If no splits found, try to detect multiple actions in one sentence
-  let steps = segments.length > 1 ? segments : smartSplit(lower);
-
-  let createdNodes = [];
-  let y = 60;
-  const getY = () => { const v = y; y += 130; return v; };
-  const hasTrigger = nodes.some(n => NODE_TYPES[n.type].category === 'trigger');
-
-  // Process each step sequentially
-  steps.forEach((step, idx) => {
-    const s = step.trim();
-    if (!s) return;
-
-    // --- TRIGGERS (only first step, and only if no trigger exists) ---
-    if (idx === 0 && !hasTrigger && createdNodes.length === 0) {
-      if (match(s, ['formulaire', 'soumission', 'form submission', 'soumis'])) {
-        const name = extractAfter(s, ['formulaire', 'form']);
-        createdNodes.push(addNode('trigger_form', 300, getY(), { formName: name }));
-        return;
-      }
-      if (match(s, ['liste', 'ajout liste', 'ajouté à une liste', 'ajoute a une liste', 'membership'])) {
-        const name = extractAfter(s, ['liste']);
-        createdNodes.push(addNode('trigger_list', 300, getY(), { listName: name }));
-        return;
-      }
-      if (match(s, ['quand', 'lorsque', 'déclencheur', 'declencheur', 'trigger', 'si le contact', 'si un contact'])) {
-        const prop = extractProperty(s);
-        createdNodes.push(addNode('trigger_property', 300, getY(), prop));
-        return;
-      }
+Retourne UNIQUEMENT un JSON valide (pas de markdown, pas de texte autour), avec cette structure :
+{
+  "name": "nom suggéré pour le workflow",
+  "steps": [
+    {
+      "type": "trigger|send_email|set_property|delay|create_task|branch",
+      "category": "trigger|action|delay|branch",
+      "label": "description courte de l'étape",
+      "detail": "détail supplémentaire si pertinent",
+      "config": { ... configuration spécifique ... }
     }
-
-    // --- DELAYS ---
-    if (match(s, ['attendre', 'attend', 'délai', 'delai', 'delay', 'pause', 'patienter', 'wait'])) {
-      const data = extractDuration(s);
-      createdNodes.push(addNode('delay', 300, getY(), data));
-      return;
-    }
-    // Standalone duration like "3 jours" or "une semaine"
-    const standaloneDur = extractDuration(s);
-    if (standaloneDur.duration && !match(s, ['email', 'mail', 'tache', 'task', 'propriete', 'modifier', 'definir', 'contact', 'envoyer', 'condition', 'branche'])) {
-      createdNodes.push(addNode('delay', 300, getY(), standaloneDur));
-      return;
-    }
-
-    // --- EMAILS ---
-    if (match(s, ['email', 'mail', 'e-mail', 'envoyer un email', 'envoyer un mail', 'envoyer email', 'envoi', 'envoi de mail', 'courrier', 'message'])) {
-      const name = extractAfter(s, ['email', 'mail', 'e-mail']) || '';
-      createdNodes.push(addNode('send_email', 300, getY(), { emailName: name.trim() }));
-      return;
-    }
-
-    // --- SET PROPERTY ---
-    if (match(s, ['définir', 'definir', 'modifier', 'changer', 'mettre à jour', 'mettre a jour', 'update', 'set', 'passer', 'marquer', 'contact marketing', 'marketing', 'lifecycle', 'statut', 'status', 'propriété', 'propriete'])) {
-      const data = extractPropertyAction(s);
-      createdNodes.push(addNode('set_property', 300, getY(), data));
-      return;
-    }
-
-    // --- CREATE TASK ---
-    if (match(s, ['tâche', 'tache', 'task', 'rappel', 'reminder', 'todo', 'à faire', 'a faire', 'notification interne'])) {
-      const subject = extractAfter(s, ['tache', 'tâche', 'task', 'rappel', 'reminder']) || '';
-      createdNodes.push(addNode('create_task', 300, getY(), { subject: subject.trim() }));
-      return;
-    }
-
-    // --- BRANCH ---
-    if (match(s, ['condition', 'si ', 'si le', 'si la', 'branche', 'if ', 'branch', 'vérifier', 'verifier', 'check'])) {
-      const data = extractBranch(s);
-      createdNodes.push(addNode('branch', 300, getY(), data));
-      return;
-    }
-
-    // --- FALLBACK: try to guess from context ---
-    if (match(s, ['envoyer', 'envoi', 'send'])) {
-      createdNodes.push(addNode('send_email', 300, getY()));
-      return;
-    }
-  });
-
-  // If we created actions but no trigger, add a default one at the top
-  if (createdNodes.length > 0 && !hasTrigger && !nodes.some(n => NODE_TYPES[n.type].category === 'trigger')) {
-    const triggerId = addNode('trigger_property', 300, 60);
-    // Shift all created nodes down
-    createdNodes.forEach(id => {
-      const node = nodes.find(n => n.id === id);
-      if (node) { node.y += 130; document.getElementById(id).style.top = node.y + 'px'; }
-    });
-    createdNodes.unshift(triggerId);
-  }
-
-  // Connect existing last node to first new node
-  if (createdNodes.length > 0) {
-    const existingNodes = nodes.filter(n => !createdNodes.includes(n.id));
-    if (existingNodes.length > 0) {
-      // Find the last node in the existing chain that has no outgoing connection
-      const nodesWithOutgoing = new Set(connections.map(c => c.from));
-      const lastExisting = existingNodes.filter(n => !nodesWithOutgoing.has(n.id));
-      if (lastExisting.length > 0) {
-        connections.push({ from: lastExisting[lastExisting.length - 1].id, to: createdNodes[0] });
-      }
-    }
-  }
-
-  // Auto-connect all created nodes in sequence
-  for (let i = 0; i < createdNodes.length - 1; i++) {
-    connections.push({ from: createdNodes[i], to: createdNodes[i + 1] });
-  }
-  renderConnections();
-
-  if (createdNodes.length > 0) {
-    showToast(`${createdNodes.length} noeud(s) cree(s) par vocal !`, 'success');
-  } else {
-    showToast('Pas compris. Essayez: "quand un formulaire est soumis, envoyer un email, attendre 3 jours, modifier la propriete lifecycle"', 'error');
-  }
+  ]
 }
 
-// --- Voice parsing helpers ---
+Types de steps et leur config :
 
-function match(text, keywords) {
-  return keywords.some(k => text.includes(k));
-}
+1. trigger (toujours en premier) :
+   - config: { "triggerType": "form_submission|property_change|list_membership", "formId": "", "formName": "", "property": "", "value": "", "listName": "" }
 
-function extractAfter(text, keywords) {
-  for (const k of keywords) {
-    const idx = text.indexOf(k);
-    if (idx >= 0) {
-      return text.substring(idx + k.length).trim().replace(/^(de|du|le|la|les|un|une|des|d'|l')\s*/i, '');
-    }
-  }
-  return '';
-}
+2. send_email :
+   - config: { "emailName": "description de l'email" }
 
-function extractDuration(text) {
-  const data = { duration: 1, unit: 'DAYS' };
-  // Match "3 jours", "une semaine", "2 heures", "48h", etc.
-  const numWords = { 'un': 1, 'une': 1, 'deux': 2, 'trois': 3, 'quatre': 4, 'cinq': 5, 'six': 6, 'sept': 7, 'huit': 8, 'neuf': 9, 'dix': 10, 'quinze': 15, 'vingt': 20, 'trente': 30 };
+3. set_property :
+   - config: { "property": "nom_propriete_hubspot", "value": "valeur" }
+   - Pour "contact marketing" : property = "hs_marketable_status", value = "true"
+   - Pour lifecycle stage : property = "lifecyclestage", value = "subscriber|lead|marketingqualifiedlead|salesqualifiedlead|opportunity|customer"
+   - Pour lead status : property = "hs_lead_status"
 
-  // Try numeric match first
-  let m = text.match(/(\d+)\s*(?:h(?:eure)?s?|hours?)/);
-  if (m) { data.duration = parseInt(m[1]); data.unit = 'HOURS'; return data; }
+4. delay :
+   - config: { "duration": nombre, "unit": "MINUTES|HOURS|DAYS|WEEKS" }
 
-  m = text.match(/(\d+)\s*(?:min(?:ute)?s?)/);
-  if (m) { data.duration = parseInt(m[1]); data.unit = 'MINUTES'; return data; }
+5. create_task :
+   - config: { "subject": "sujet", "body": "détails", "priority": "LOW|MEDIUM|HIGH" }
 
-  m = text.match(/(\d+)\s*(?:jour|jours|days?|j\b)/);
-  if (m) { data.duration = parseInt(m[1]); data.unit = 'DAYS'; return data; }
+6. branch (condition si/alors) :
+   - config: { "property": "", "operator": "eq|neq|contains|is_known|is_unknown", "value": "", "branchName": "nom de la branche" }
 
-  m = text.match(/(\d+)\s*(?:semaine|semaines|weeks?)/);
-  if (m) { data.duration = parseInt(m[1]); data.unit = 'WEEKS'; return data; }
-
-  m = text.match(/(\d+)\s*(?:mois|months?)/);
-  if (m) { data.duration = parseInt(m[1]) * 30; data.unit = 'DAYS'; return data; }
-
-  // Try word numbers: "une semaine", "trois jours"
-  for (const [word, num] of Object.entries(numWords)) {
-    const r = new RegExp(word + '\\s*(jour|jours|semaine|semaines|heure|heures|minute|minutes)');
-    const wm = text.match(r);
-    if (wm) {
-      data.duration = num;
-      if (wm[1].startsWith('jour')) data.unit = 'DAYS';
-      else if (wm[1].startsWith('semaine')) data.unit = 'WEEKS';
-      else if (wm[1].startsWith('heure')) data.unit = 'HOURS';
-      else if (wm[1].startsWith('minute')) data.unit = 'MINUTES';
-      return data;
-    }
-  }
-
-  return data;
-}
-
-function extractProperty(text) {
-  const data = { property: '', value: '', operator: 'eq' };
-  // Try to extract "propriete X = Y" or "X est Y" patterns
-  let m = text.match(/(?:propriete|propriété)\s+(\S+)\s+(?:est|=|égal|egal|vaut)\s+(.+)/);
-  if (m) { data.property = m[1]; data.value = m[2].trim(); return data; }
-  return data;
-}
-
-function extractPropertyAction(text) {
-  const data = { property: '', value: '' };
-
-  // "contact marketing" or "marketing contact"
-  if (text.includes('marketing') && text.includes('contact')) {
-    data.property = 'hs_marketable_status';
-    data.value = 'true';
-    return data;
-  }
-  if (text.includes('marketing')) {
-    data.property = 'hs_marketable_status';
-    data.value = 'true';
-    return data;
-  }
-
-  // "lifecycle" patterns
-  if (match(text, ['lifecycle', 'cycle de vie'])) {
-    data.property = 'lifecyclestage';
-    if (text.includes('client') || text.includes('customer')) data.value = 'customer';
-    else if (text.includes('lead')) data.value = 'lead';
-    else if (text.includes('mql') || text.includes('marketing qualified')) data.value = 'marketingqualifiedlead';
-    else if (text.includes('sql') || text.includes('sales qualified')) data.value = 'salesqualifiedlead';
-    else if (text.includes('opportunit')) data.value = 'opportunity';
-    else if (text.includes('subscriber') || text.includes('abonne')) data.value = 'subscriber';
-    return data;
-  }
-
-  // "statut" / "status" patterns
-  if (match(text, ['statut', 'status', 'lead status'])) {
-    data.property = 'hs_lead_status';
-    const val = extractAfter(text, ['statut', 'status', 'en ', 'à ', 'a ']);
-    if (val) data.value = val;
-    return data;
-  }
-
-  // Generic "modifier/definir X a/en Y"
-  let m = text.match(/(?:modifier|definir|définir|changer|passer|mettre|set|marquer)\s+(?:le |la |l'|les )?(?:propriete |propriété )?(.+?)(?:\s+(?:à|a|en|=|sur|vers)\s+)(.+)/);
-  if (m) {
-    data.property = m[1].trim();
-    data.value = m[2].trim();
-    return data;
-  }
-
-  // Fallback: just grab what we can
-  m = text.match(/(?:modifier|definir|définir|changer|passer|mettre|set|marquer)\s+(.+)/);
-  if (m) {
-    data.property = m[1].trim().replace(/^(le|la|les|l'|un|une)\s+/, '');
-  }
-
-  return data;
-}
-
-function extractBranch(text) {
-  const data = { property: '', operator: 'eq', value: '', branchName: 'Oui' };
-  let m = text.match(/(?:si|if|vérifier|verifier|check)\s+(?:le |la |l')?(.+?)(?:\s+(?:est|=|contient|contains|égal|egal)\s+)(.+)/);
-  if (m) {
-    data.property = m[1].trim();
-    data.value = m[2].trim();
-    if (text.includes('contient') || text.includes('contains')) data.operator = 'contains';
-  }
-  return data;
-}
-
-function smartSplit(text) {
-  // If the text has no explicit connectors, try to split by detecting action keywords
-  const actionKeywords = [
-    'envoyer', 'envoi', 'email', 'mail',
-    'attendre', 'delai', 'délai', 'pause',
-    'modifier', 'definir', 'définir', 'changer', 'passer', 'mettre à jour', 'mettre a jour', 'marquer',
-    'tâche', 'tache', 'task', 'rappel',
-    'condition', 'vérifier', 'verifier',
-    'contact marketing'
-  ];
-
-  // Find positions of each action keyword
-  const positions = [];
-  actionKeywords.forEach(kw => {
-    let idx = 0;
-    while (true) {
-      const found = text.indexOf(kw, idx);
-      if (found === -1) break;
-      // Don't split if it's part of a trigger phrase at the start
-      if (found > 10 || !match(text.substring(0, found + kw.length + 10), ['quand', 'lorsque', 'déclencheur', 'declencheur', 'trigger', 'formulaire'])) {
-        positions.push(found);
-      }
-      idx = found + kw.length;
-    }
-  });
-
-  // Also detect standalone durations "3 jours", "une semaine"
-  const durRegex = /(?:\d+|un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|quinze|vingt|trente)\s*(?:jour|jours|heure|heures|minute|minutes|semaine|semaines|mois|h\b|j\b|min\b)/g;
-  let durMatch;
-  while ((durMatch = durRegex.exec(text)) !== null) {
-    positions.push(durMatch.index);
-  }
-
-  if (positions.length <= 1) return [text];
-
-  // Sort and deduplicate nearby positions
-  const sorted = [...new Set(positions)].sort((a, b) => a - b);
-  const deduped = [sorted[0]];
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] - deduped[deduped.length - 1] > 8) {
-      deduped.push(sorted[i]);
-    }
-  }
-
-  // Split text at these positions
-  const segments = [];
-  for (let i = 0; i < deduped.length; i++) {
-    const start = deduped[i];
-    const end = i < deduped.length - 1 ? deduped[i + 1] : text.length;
-    const seg = text.substring(start, end).trim().replace(/^(et|puis|ensuite|après|apres)\s+/, '');
-    if (seg.length > 2) segments.push(seg);
-  }
-
-  // If there's text before the first action, include it (might be a trigger)
-  if (deduped[0] > 3) {
-    const prefix = text.substring(0, deduped[0]).trim().replace(/\s+(et|puis|ensuite)$/, '');
-    if (prefix.length > 3) segments.unshift(prefix);
-  }
-
-  return segments.length > 0 ? segments : [text];
-}
-
-// ========== HUBSPOT ==========
-function showHubspotModal() {
-  document.getElementById('hubspotModal').classList.add('active');
-  if (hubspotToken) {
-    document.getElementById('hubspotToken').value = hubspotToken;
-  }
-}
-
-function closeModal() {
-  document.getElementById('hubspotModal').classList.remove('active');
-}
-
-async function validateToken() {
-  const token = document.getElementById('hubspotToken').value.trim();
-  if (!token) { showToast('Entrez un token', 'error'); return; }
-
-  document.getElementById('tokenStatus').textContent = 'Validation en cours...';
-  document.getElementById('tokenStatus').style.color = '#fbbf24';
+Règles :
+- Le premier step doit toujours être un trigger
+- Si l'utilisateur ne mentionne pas de trigger, déduis-le du contexte (ex: "quand quelqu'un remplit un formulaire" = trigger form_submission)
+- Traduis les durées naturelles (ex: "quelques jours" = 3 jours, "une semaine" = 1 semaine)
+- Sois intelligent : "définir en tant que contact marketing" = set_property hs_marketable_status true
+- "Envoyer un email de bienvenue" = send_email avec emailName "Email de bienvenue"
+- Retourne le JSON brut, rien d'autre`;
 
   try {
-    const res = await fetch('https://api.hubapi.com/crm/v3/objects/contacts?limit=1', {
-      headers: { 'Authorization': `Bearer ${token}` }
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: transcript }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000
+      })
     });
 
-    if (res.ok) {
-      hubspotToken = token;
-      localStorage.setItem('hubspot_token', token);
-      document.getElementById('tokenStatus').textContent = 'Token valide !';
-      document.getElementById('tokenStatus').style.color = '#22c55e';
-      document.getElementById('statusDot').classList.add('connected');
-      document.getElementById('statusDot').title = 'Connecte';
-      showToast('Connecte a HubSpot !', 'success');
-      setTimeout(closeModal, 1000);
-    } else {
-      document.getElementById('tokenStatus').textContent = 'Token invalide ou scopes manquants';
-      document.getElementById('tokenStatus').style.color = '#dc2626';
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Erreur API OpenAI');
     }
+
+    const data = await res.json();
+    let content = data.choices[0].message.content.trim();
+
+    // Clean potential markdown wrapping
+    content = content.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '');
+
+    const workflow = JSON.parse(content);
+
+    if (workflow.name) document.getElementById('wfName').value = workflow.name;
+    if (workflow.steps && workflow.steps.length > 0) {
+      workflowSteps = workflow.steps;
+      localStorage.setItem('current_workflow', JSON.stringify(workflowSteps));
+      renderWorkflow();
+      toast(`${workflowSteps.length} etape(s) creee(s)`, 'success');
+    } else {
+      toast('Aucune etape detectee, reessayez', 'error');
+    }
+
   } catch (err) {
-    document.getElementById('tokenStatus').textContent = 'Erreur reseau: ' + err.message;
-    document.getElementById('tokenStatus').style.color = '#dc2626';
+    console.error('AI parse error:', err);
+    toast('Erreur: ' + err.message, 'error');
+  }
+
+  // Reset mic button
+  document.getElementById('micBtn').classList.remove('processing');
+  document.getElementById('micIcon').innerHTML = '<path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>';
+  document.getElementById('micLabel').textContent = 'Cliquez pour parler';
+  document.getElementById('micLabel').className = 'mic-label';
+}
+
+// ===== RENDER WORKFLOW =====
+function renderWorkflow() {
+  const section = document.getElementById('workflowSection');
+  const list = document.getElementById('workflowList');
+  section.classList.add('visible');
+
+  list.innerHTML = workflowSteps.map((step, i) => {
+    const cat = step.category || guessCategory(step.type);
+    return `
+      <div class="wf-step ${cat}">
+        <div class="dot"></div>
+        <div class="wf-card">
+          <div class="step-type">${getTypeLabel(step.type)}</div>
+          <div class="step-desc">${step.label || ''}</div>
+          ${step.detail ? `<div class="step-detail">${step.detail}</div>` : ''}
+          ${renderConfig(step)}
+        </div>
+        <div class="remove-btn" onclick="removeStep(${i})">&#10005;</div>
+      </div>`;
+  }).join('');
+}
+
+function guessCategory(type) {
+  if (type === 'trigger') return 'trigger';
+  if (type === 'delay') return 'delay';
+  if (type === 'branch') return 'branch';
+  return 'action';
+}
+
+function getTypeLabel(type) {
+  const labels = {
+    trigger: 'Declencheur',
+    send_email: 'Envoyer email',
+    set_property: 'Modifier propriete',
+    delay: 'Delai',
+    create_task: 'Creer tache',
+    branch: 'Condition'
+  };
+  return labels[type] || type;
+}
+
+function renderConfig(step) {
+  if (!step.config) return '';
+  const c = step.config;
+  let parts = [];
+
+  if (c.triggerType) parts.push(`Type: ${c.triggerType}`);
+  if (c.property) parts.push(`Propriete: ${c.property}`);
+  if (c.value) parts.push(`Valeur: ${c.value}`);
+  if (c.duration) parts.push(`Duree: ${c.duration} ${(c.unit || 'DAYS').toLowerCase()}`);
+  if (c.emailName) parts.push(`Email: ${c.emailName}`);
+  if (c.subject) parts.push(`Sujet: ${c.subject}`);
+  if (c.formName) parts.push(`Formulaire: ${c.formName}`);
+
+  if (parts.length === 0) return '';
+  return `<div class="step-detail" style="margin-top:6px;padding-top:6px;border-top:1px solid #1e1e2e;font-size:11px;color:#475569">${parts.join(' &middot; ')}</div>`;
+}
+
+function removeStep(index) {
+  workflowSteps.splice(index, 1);
+  localStorage.setItem('current_workflow', JSON.stringify(workflowSteps));
+  renderWorkflow();
+  if (workflowSteps.length === 0) {
+    document.getElementById('workflowSection').classList.remove('visible');
   }
 }
 
+function clearWorkflow() {
+  workflowSteps = [];
+  localStorage.removeItem('current_workflow');
+  document.getElementById('workflowSection').classList.remove('visible');
+  document.getElementById('transcriptBox').classList.remove('visible');
+  toast('Workflow efface', 'success');
+}
+
+// ===== SAVE / LOAD =====
+function saveWorkflow() {
+  const name = document.getElementById('wfName').value || 'Mon Workflow';
+  const saved = JSON.parse(localStorage.getItem('hubspot_workflows') || '[]');
+  const idx = saved.findIndex(w => w.name === name);
+  const wf = { name, steps: workflowSteps, savedAt: new Date().toISOString() };
+  if (idx >= 0) saved[idx] = wf; else saved.push(wf);
+  localStorage.setItem('hubspot_workflows', JSON.stringify(saved));
+  toast('Sauvegarde !', 'success');
+}
+
+function loadSavedList() {
+  // Available for future UI
+}
+
+// ===== DEPLOY TO HUBSPOT =====
 async function deployToHubspot() {
-  if (!hubspotToken) {
-    showToast('Connectez-vous d\'abord a HubSpot', 'error');
-    showHubspotModal();
-    return;
-  }
+  if (!hubspotToken) { toast('Ajoutez votre token HubSpot dans les reglages', 'error'); openSettings(); return; }
+  if (workflowSteps.length === 0) { toast('Aucun workflow a deployer', 'error'); return; }
 
-  const trigger = nodes.find(n => NODE_TYPES[n.type].category === 'trigger');
-  if (!trigger) {
-    showToast('Ajoutez un declencheur au workflow', 'error');
-    return;
-  }
+  const trigger = workflowSteps.find(s => s.type === 'trigger');
+  if (!trigger) { toast('Pas de declencheur dans le workflow', 'error'); return; }
 
-  // Build HubSpot payload
   try {
     const payload = buildHubSpotPayload();
     const res = await fetch('https://api.hubapi.com/automation/v4/flows', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${hubspotToken}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Authorization': `Bearer ${hubspotToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
     if (res.ok) {
       const data = await res.json();
-      showToast('Workflow deploye sur HubSpot ! ID: ' + data.flowId, 'success');
+      toast('Deploye sur HubSpot ! ID: ' + data.flowId, 'success');
     } else {
       const err = await res.json();
-      showToast('Erreur: ' + (err.message || JSON.stringify(err)), 'error');
-      console.error('HubSpot error:', err);
+      toast('Erreur HubSpot: ' + (err.message || JSON.stringify(err)), 'error');
     }
   } catch (err) {
-    showToast('Erreur: ' + err.message, 'error');
+    toast('Erreur: ' + err.message, 'error');
   }
 }
 
 function buildHubSpotPayload() {
   const name = document.getElementById('wfName').value || 'Mon Workflow';
-  const trigger = nodes.find(n => NODE_TYPES[n.type].category === 'trigger');
-  const actionNodes = getOrderedActions(trigger.id);
+  const actionSteps = workflowSteps.filter(s => s.type !== 'trigger');
+  const trigger = workflowSteps.find(s => s.type === 'trigger');
 
-  // Build actions array
-  const actions = [];
-  actionNodes.forEach((node, i) => {
+  const actions = actionSteps.map((step, i) => {
     const actionId = String(i + 1);
-    const nextId = i < actionNodes.length - 1 ? String(i + 2) : null;
+    const nextId = i < actionSteps.length - 1 ? String(i + 2) : null;
+    const action = { type: 'SINGLE_CONNECTION', actionId, actionTypeVersion: 1, fields: {} };
 
-    const action = {
-      type: 'SINGLE_CONNECTION',
-      actionId,
-      actionTypeVersion: 1,
-      fields: {},
-    };
-
-    switch (node.type) {
-      case 'send_email':
-        action.actionTypeId = '0-4';
-        action.fields = { content_id: node.data.emailId };
-        break;
-      case 'set_property':
-        action.actionTypeId = '0-5';
-        action.fields = { property_name: node.data.property, value: node.data.value };
-        break;
-      case 'delay':
-        action.actionTypeId = '0-1';
-        action.fields = { delta: String(node.data.duration), time_unit: node.data.unit };
-        break;
-      case 'create_task':
-        action.actionTypeId = '0-3';
-        action.fields = { subject: node.data.subject, body: node.data.body || '', priority: node.data.priority };
-        break;
+    switch (step.type) {
+      case 'send_email': action.actionTypeId = '0-4'; action.fields = { content_id: step.config?.emailId || '' }; break;
+      case 'set_property': action.actionTypeId = '0-5'; action.fields = { property_name: step.config?.property || '', value: step.config?.value || '' }; break;
+      case 'delay': action.actionTypeId = '0-1'; action.fields = { delta: String(step.config?.duration || 1), time_unit: step.config?.unit || 'DAYS' }; break;
+      case 'create_task': action.actionTypeId = '0-3'; action.fields = { subject: step.config?.subject || '', body: step.config?.body || '', priority: step.config?.priority || 'MEDIUM' }; break;
     }
 
-    if (nextId) {
-      action.connection = { edgeType: 'STANDARD', nextActionId: nextId };
-    }
-
-    actions.push(action);
+    if (nextId) action.connection = { edgeType: 'STANDARD', nextActionId: nextId };
+    return action;
   });
 
-  // Build enrollment criteria
-  const enrollmentCriteria = {
-    shouldReEnroll: false,
-    type: 'EVENT_BASED',
-  };
-
-  if (trigger.type === 'trigger_property') {
-    enrollmentCriteria.eventFilterBranches = [{
-      eventTypeId: '4-655002',
-      filters: [{
-        property: trigger.data.property,
-        operator: trigger.data.operator === 'eq' ? 'IS_EQUAL_TO' : 'IS_NOT_EQUAL_TO',
-        value: trigger.data.value
-      }]
-    }];
+  const enrollmentCriteria = { shouldReEnroll: false, type: 'EVENT_BASED' };
+  if (trigger?.config?.triggerType === 'property_change') {
+    enrollmentCriteria.eventFilterBranches = [{ eventTypeId: '4-655002', filters: [{ property: trigger.config.property || '', operator: 'IS_EQUAL_TO', value: trigger.config.value || '' }] }];
+  } else if (trigger?.config?.triggerType === 'form_submission') {
+    enrollmentCriteria.eventFilterBranches = [{ eventTypeId: '4-1639801', filters: [] }];
   }
 
   return {
-    isEnabled: false,
-    flowType: 'WORKFLOW',
-    name,
-    type: 'CONTACT_FLOW',
-    objectTypeId: '0-1',
+    isEnabled: false, flowType: 'WORKFLOW', name, type: 'CONTACT_FLOW', objectTypeId: '0-1',
     startActionId: actions.length > 0 ? '1' : null,
     nextAvailableActionId: String(actions.length + 1),
-    actions,
-    enrollmentCriteria,
-    crmObjectCreationStatus: 'COMPLETE'
+    actions, enrollmentCriteria, crmObjectCreationStatus: 'COMPLETE'
   };
 }
 
-function getOrderedActions(triggerId) {
-  const ordered = [];
-  let currentId = triggerId;
-  const visited = new Set();
-
-  while (currentId && !visited.has(currentId)) {
-    visited.add(currentId);
-    const conn = connections.find(c => c.from === currentId);
-    if (!conn) break;
-    const nextNode = nodes.find(n => n.id === conn.to);
-    if (!nextNode || NODE_TYPES[nextNode.type].category === 'trigger') break;
-    ordered.push(nextNode);
-    currentId = conn.to;
-  }
-  return ordered;
+// ===== SETTINGS =====
+function openSettings() {
+  document.getElementById('settingsModal').classList.add('open');
+  document.getElementById('openaiKeyInput').value = openaiKey;
+  document.getElementById('hubspotTokenInput').value = hubspotToken;
 }
 
-// ========== SAVE / LOAD ==========
-function saveWorkflow() {
-  const name = document.getElementById('wfName').value || 'Mon Workflow';
-  const saved = JSON.parse(localStorage.getItem('hubspot_workflows') || '[]');
-  const existing = saved.findIndex(w => w.name === name);
-  const workflow = {
-    name,
-    nodes,
-    connections,
-    nextId,
-    savedAt: new Date().toISOString()
-  };
-
-  if (existing >= 0) {
-    saved[existing] = workflow;
-  } else {
-    saved.push(workflow);
-  }
-
-  localStorage.setItem('hubspot_workflows', JSON.stringify(saved));
-  showToast('Workflow sauvegarde !', 'success');
-  loadSavedList();
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('open');
 }
 
-function loadSavedList() {
-  const saved = JSON.parse(localStorage.getItem('hubspot_workflows') || '[]');
-  const list = document.getElementById('savedList');
-
-  if (saved.length === 0) {
-    list.innerHTML = '<div style="color:#64748b;font-size:12px">Aucun workflow sauvegarde</div>';
-    return;
-  }
-
-  list.innerHTML = saved.map((w, i) => `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:#0f172a;border-radius:6px;margin-bottom:4px;cursor:pointer" onclick="loadWorkflow(${i})">
-      <span style="font-size:12px;color:#e2e8f0">${w.name}</span>
-      <span style="font-size:10px;color:#64748b">${new Date(w.savedAt).toLocaleDateString('fr')}</span>
-    </div>
-  `).join('');
+function saveSettings() {
+  openaiKey = document.getElementById('openaiKeyInput').value.trim();
+  hubspotToken = document.getElementById('hubspotTokenInput').value.trim();
+  if (openaiKey) localStorage.setItem('openai_key', openaiKey);
+  else localStorage.removeItem('openai_key');
+  if (hubspotToken) localStorage.setItem('hubspot_token', hubspotToken);
+  else localStorage.removeItem('hubspot_token');
+  updateStatusDots();
+  closeSettings();
+  toast('Reglages enregistres', 'success');
 }
 
-function loadWorkflow(index) {
-  const saved = JSON.parse(localStorage.getItem('hubspot_workflows') || '[]');
-  const w = saved[index];
-  if (!w) return;
-
-  // Clear canvas
-  document.getElementById('canvas').innerHTML = '';
-  nodes = [];
-  connections = [];
-
-  // Restore
-  document.getElementById('wfName').value = w.name;
-  nextId = w.nextId || 1;
-  w.nodes.forEach(n => {
-    nodes.push(n);
-    renderNode(n);
-  });
-  connections = w.connections || [];
-  renderConnections();
-  selectNode(null);
-  showToast('Workflow charge: ' + w.name, 'success');
-}
-
-// ========== TOAST ==========
-function showToast(message, type = 'success') {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.className = 'toast ' + type + ' show';
-  setTimeout(() => { toast.classList.remove('show'); }, 3000);
+// ===== TOAST =====
+function toast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type + ' show';
+  setTimeout(() => t.classList.remove('show'), 3000);
 }
 </script>
 </body>
