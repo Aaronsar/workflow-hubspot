@@ -476,6 +476,12 @@ async function deployToHubspot() {
   const trigger = workflowSteps.find(s => s.type === 'trigger');
   if (!trigger) { toast('Pas de declencheur dans le workflow', 'error'); return; }
 
+  // Warn about emails without IDs
+  const emailsWithoutId = workflowSteps.filter(s => s.type === 'send_email' && !s.config?.emailId);
+  if (emailsWithoutId.length > 0) {
+    toast(`${emailsWithoutId.length} email(s) ignore(s) car sans ID HubSpot. Les autres etapes seront deployees.`, 'error');
+  }
+
   try {
     const payload = buildHubSpotPayload();
     console.log('HubSpot payload:', JSON.stringify(payload, null, 2));
@@ -510,10 +516,14 @@ function buildHubSpotPayload() {
   const actionSteps = workflowSteps.filter(s => s.type !== 'trigger');
   const trigger = workflowSteps.find(s => s.type === 'trigger');
 
-  // --- BUILD ACTIONS ---
-  const actions = actionSteps.map((step, i) => {
+  // --- BUILD ACTIONS (skip send_email without real ID) ---
+  const validSteps = actionSteps.filter(s => {
+    if (s.type === 'send_email' && !s.config?.emailId) return false;
+    return true;
+  });
+  const actions = validSteps.map((step, i) => {
     const actionId = String(i + 1);
-    const nextId = i < actionSteps.length - 1 ? String(i + 2) : null;
+    const nextId = i < validSteps.length - 1 ? String(i + 2) : null;
     const action = {
       type: 'SINGLE_CONNECTION',
       actionId,
