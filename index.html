@@ -279,54 +279,29 @@ function stopRecording() {
 
 // ===== AI PARSING =====
 async function parseWithAI(transcript) {
-  const systemPrompt = `Tu es un assistant qui transforme des descriptions vocales en workflows HubSpot structurés.
+  const systemPrompt = `Tu transformes des descriptions vocales en workflows HubSpot. Retourne UNIQUEMENT du JSON valide, sans markdown.
 
-L'utilisateur va te décrire un workflow en langage naturel (souvent en français). Tu dois extraire les étapes et retourner un JSON.
+IMPORTANT : Extrais TOUTES les étapes mentionnées. Un workflow a TOUJOURS plusieurs étapes. Chaque action décrite (envoyer email, modifier propriété, attendre, créer tâche) est une étape SÉPARÉE.
 
-Retourne UNIQUEMENT un JSON valide (pas de markdown, pas de texte autour), avec cette structure :
-{
-  "name": "nom suggéré pour le workflow",
-  "steps": [
-    {
-      "type": "trigger|send_email|set_property|delay|create_task|branch",
-      "category": "trigger|action|delay|branch",
-      "label": "description courte de l'étape",
-      "detail": "détail supplémentaire si pertinent",
-      "config": { ... configuration spécifique ... }
-    }
-  ]
-}
+Format :
+{"name":"nom","steps":[{"type":"...","category":"...","label":"...","config":{...}}]}
 
-Types de steps et leur config :
+Types possibles :
+- trigger (TOUJOURS en premier) : category="trigger", config: {"triggerType":"form_submission|property_change|list_membership"}
+- set_property : category="action", config: {"property":"nom_hubspot","value":"valeur"}
+  Exemples : "contact marketing" → property="hs_marketable_status", value="true" | "lifecycle stage" → property="lifecyclestage", value="lead|customer|etc"
+- send_email : category="action", config: {"emailName":"description"}
+- delay : category="delay", config: {"duration":nombre,"unit":"MINUTES|HOURS|DAYS|WEEKS"}
+- create_task : category="action", config: {"subject":"sujet","body":"détails","priority":"NONE|HIGH"}
+- branch : category="branch", config: {"property":"","operator":"eq|neq|contains","value":""}
 
-1. trigger (toujours en premier) :
-   - config: { "triggerType": "form_submission|property_change|list_membership", "formId": "", "formName": "", "property": "", "value": "", "listName": "" }
-
-2. send_email :
-   - config: { "emailName": "description de l'email" }
-
-3. set_property :
-   - config: { "property": "nom_propriete_hubspot", "value": "valeur" }
-   - Pour "contact marketing" : property = "hs_marketable_status", value = "true"
-   - Pour lifecycle stage : property = "lifecyclestage", value = "subscriber|lead|marketingqualifiedlead|salesqualifiedlead|opportunity|customer"
-   - Pour lead status : property = "hs_lead_status"
-
-4. delay :
-   - config: { "duration": nombre, "unit": "MINUTES|HOURS|DAYS|WEEKS" }
-
-5. create_task :
-   - config: { "subject": "sujet", "body": "détails", "priority": "NONE|HIGH" }
-
-6. branch (condition si/alors) :
-   - config: { "property": "", "operator": "eq|neq|contains|is_known|is_unknown", "value": "", "branchName": "nom de la branche" }
-
-Règles :
-- Le premier step doit toujours être un trigger
-- Si l'utilisateur ne mentionne pas de trigger, déduis-le du contexte (ex: "quand quelqu'un remplit un formulaire" = trigger form_submission)
-- Traduis les durées naturelles (ex: "quelques jours" = 3 jours, "une semaine" = 1 semaine)
-- Sois intelligent : "définir en tant que contact marketing" = set_property hs_marketable_status true
-- "Envoyer un email de bienvenue" = send_email avec emailName "Email de bienvenue"
-- Retourne le JSON brut, rien d'autre`;
+Exemple : "quand quelqu'un remplit un formulaire, définir en contact marketing puis envoyer un email puis attendre 3 jours" →
+{"name":"Workflow formulaire","steps":[
+  {"type":"trigger","category":"trigger","label":"Soumission de formulaire","config":{"triggerType":"form_submission"}},
+  {"type":"set_property","category":"action","label":"Définir contact marketing","config":{"property":"hs_marketable_status","value":"true"}},
+  {"type":"send_email","category":"action","label":"Envoyer email","config":{"emailName":"Email marketing"}},
+  {"type":"delay","category":"delay","label":"Attendre 3 jours","config":{"duration":3,"unit":"DAYS"}}
+]}`;
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -350,11 +325,13 @@ Règles :
 
     const data = await res.json();
     let content = data.choices[0].message.content.trim();
+    console.log('AI raw response:', content);
 
     // Clean potential markdown wrapping
     content = content.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '');
 
     const workflow = JSON.parse(content);
+    console.log('Parsed steps:', workflow.steps?.length, workflow.steps);
 
     if (workflow.name) document.getElementById('wfName').value = workflow.name;
     if (workflow.steps && workflow.steps.length > 0) {

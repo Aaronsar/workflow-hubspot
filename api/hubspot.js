@@ -28,7 +28,14 @@ export default async function handler(req, res) {
     }
 
     const response = await fetch(hubspotUrl, options);
-    const data = await response.json();
+    const text = await response.text();
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      data = { error: text, status: response.status };
+    }
 
     res.status(response.status).json(data);
   } catch (err) {
