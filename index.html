@@ -494,25 +494,7 @@ async function deployToHubspot() {
   const trigger = workflowSteps.find(s => s.type === 'trigger');
   if (!trigger) { toast('Pas de declencheur dans le workflow', 'error'); return; }
 
-  // Check for emails without IDs - try to auto-match or warn
-  const emailsWithoutId = workflowSteps.filter(s => s.type === 'send_email' && !s.config?.emailId);
-  if (emailsWithoutId.length > 0) {
-    // Try to fetch emails and auto-match by name
-    await fetchHubSpotEmails();
-    let matched = 0;
-    emailsWithoutId.forEach(step => {
-      const name = (step.config?.emailName || '').toLowerCase();
-      const match = hubspotEmails.find(e => e.name && e.name.toLowerCase().includes(name));
-      if (match) { step.config.emailId = String(match.id); matched++; }
-    });
-    const unmatched = emailsWithoutId.length - matched;
-    if (unmatched > 0) {
-      toast(`${unmatched} email(s) sans correspondance HubSpot - ces etapes seront ignorees`, 'error');
-    }
-    if (matched > 0) {
-      toast(`${matched} email(s) auto-associe(s) depuis HubSpot`, 'success');
-    }
-  }
+  // Emails without IDs will be skipped silently - user will add them manually in HubSpot
 
   try {
     const payload = buildHubSpotPayload();
