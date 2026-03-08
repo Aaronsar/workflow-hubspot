@@ -556,16 +556,15 @@ function buildHubSpotPayload() {
         };
         break;
       case 'delay':
-        action.actionTypeId = '0-35';
+        action.actionTypeId = '0-1';
         const dur = parseInt(step.config?.duration) || 1;
         const unit = (step.config?.unit || 'DAYS').toUpperCase();
-        // Use native time units
-        const validUnits = ['MINUTES', 'HOURS', 'DAYS'];
-        let delayDelta = dur;
-        let delayUnit = validUnits.includes(unit) ? unit : 'DAYS';
-        // Convert weeks to days
-        if (unit === 'WEEKS') { delayDelta = dur * 7; delayUnit = 'DAYS'; }
-        action.fields = { delta: String(delayDelta), time_unit: delayUnit };
+        let deltaMs = dur * 86400000; // default days in ms
+        if (unit === 'MINUTES') deltaMs = dur * 60000;
+        else if (unit === 'HOURS') deltaMs = dur * 3600000;
+        else if (unit === 'DAYS') deltaMs = dur * 86400000;
+        else if (unit === 'WEEKS') deltaMs = dur * 604800000;
+        action.fields = { delta: String(deltaMs), time_unit: 'MILLISECONDS' };
         break;
       case 'create_task':
         action.actionTypeId = '0-3';
