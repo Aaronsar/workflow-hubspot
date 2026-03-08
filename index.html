@@ -315,7 +315,7 @@ Types de steps et leur config :
    - config: { "duration": nombre, "unit": "MINUTES|HOURS|DAYS|WEEKS" }
 
 5. create_task :
-   - config: { "subject": "sujet", "body": "détails", "priority": "LOW|MEDIUM|HIGH" }
+   - config: { "subject": "sujet", "body": "détails", "priority": "NONE|HIGH" }
 
 6. branch (condition si/alors) :
    - config: { "property": "", "operator": "eq|neq|contains|is_known|is_unknown", "value": "", "branchName": "nom de la branche" }
@@ -468,6 +468,24 @@ function loadSavedList() {
   // Available for future UI
 }
 
+// ===== HUBSPOT EMAILS =====
+let hubspotEmails = [];
+
+async function fetchHubSpotEmails() {
+  if (!hubspotToken) return;
+  try {
+    const isLocal = location.protocol === 'file:' || location.hostname === 'localhost';
+    const baseUrl = isLocal ? 'https://api.hubapi.com' : '/api/hubspot';
+    const res = await fetch(`${baseUrl}/marketing/v3/emails?limit=100&orderBy=-updated`, {
+      headers: { 'Authorization': `Bearer ${hubspotToken}`, 'Content-Type': 'application/json' }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      hubspotEmails = (data.results || []).filter(e => e.type === 'AUTOMATED' || e.type === 'AUTOMATED_AB');
+    }
+  } catch (e) { console.warn('Could not fetch emails:', e); }
+}
+
 // ===== DEPLOY TO HUBSPOT =====
 async function deployToHubspot() {
   if (!hubspotToken) { toast('Ajoutez votre token HubSpot dans les reglages', 'error'); openSettings(); return; }
@@ -476,21 +494,33 @@ async function deployToHubspot() {
   const trigger = workflowSteps.find(s => s.type === 'trigger');
   if (!trigger) { toast('Pas de declencheur dans le workflow', 'error'); return; }
 
-  // Warn about emails without IDs
+  // Check for emails without IDs - try to auto-match or warn
   const emailsWithoutId = workflowSteps.filter(s => s.type === 'send_email' && !s.config?.emailId);
   if (emailsWithoutId.length > 0) {
-    toast(`${emailsWithoutId.length} email(s) ignore(s) car sans ID HubSpot. Les autres etapes seront deployees.`, 'error');
+    // Try to fetch emails and auto-match by name
+    await fetchHubSpotEmails();
+    let matched = 0;
+    emailsWithoutId.forEach(step => {
+      const name = (step.config?.emailName || '').toLowerCase();
+      const match = hubspotEmails.find(e => e.name && e.name.toLowerCase().includes(name));
+      if (match) { step.config.emailId = String(match.id); matched++; }
+    });
+    const unmatched = emailsWithoutId.length - matched;
+    if (unmatched > 0) {
+      toast(`${unmatched} email(s) sans correspondance HubSpot - ces etapes seront ignorees`, 'error');
+    }
+    if (matched > 0) {
+      toast(`${matched} email(s) auto-associe(s) depuis HubSpot`, 'success');
+    }
   }
 
   try {
     const payload = buildHubSpotPayload();
     console.log('HubSpot payload:', JSON.stringify(payload, null, 2));
-    // Use Vercel proxy to avoid CORS, fallback to direct for local testing
     const isLocal = location.protocol === 'file:' || location.hostname === 'localhost';
     const baseUrl = isLocal ? 'https://api.hubapi.com' : '/api/hubspot';
-    const url = isLocal ? `${baseUrl}/automation/v4/flows` : `${baseUrl}/automation/v4/flows`;
 
-    const res = await fetch(url, {
+    const res = await fetch(`${baseUrl}/automation/v4/flows`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${hubspotToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -498,7 +528,7 @@ async function deployToHubspot() {
 
     if (res.ok) {
       const data = await res.json();
-      toast('Deploye sur HubSpot ! ID: ' + data.flowId, 'success');
+      toast('Deploye sur HubSpot ! ID: ' + data.id, 'success');
     } else {
       const err = await res.json().catch(() => ({}));
       const msg = err.message || err.category || JSON.stringify(err);
@@ -544,22 +574,29 @@ function buildHubSpotPayload() {
         };
         break;
       case 'delay':
-        action.actionTypeId = '0-1';
-        // Convert to minutes for reliability
+        action.actionTypeId = '0-35';
         const dur = parseInt(step.config?.duration) || 1;
-        const unit = step.config?.unit || 'DAYS';
-        let deltaMinutes = dur;
-        if (unit === 'HOURS') deltaMinutes = dur * 60;
-        else if (unit === 'DAYS') deltaMinutes = dur * 1440;
-        else if (unit === 'WEEKS') deltaMinutes = dur * 10080;
-        action.fields = { delta: String(deltaMinutes), time_unit: 'MINUTES' };
+        const unit = (step.config?.unit || 'DAYS').toUpperCase();
+        // Use native time units
+        const validUnits = ['MINUTES', 'HOURS', 'DAYS'];
+        let delayDelta = dur;
+        let delayUnit = validUnits.includes(unit) ? unit : 'DAYS';
+        // Convert weeks to days
+        if (unit === 'WEEKS') { delayDelta = dur * 7; delayUnit = 'DAYS'; }
+        action.fields = { delta: String(delayDelta), time_unit: delayUnit };
         break;
       case 'create_task':
         action.actionTypeId = '0-3';
         action.fields = {
+          task_type: 'TODO',
           subject: step.config?.subject || '',
-          body: step.config?.body || '',
-          priority: step.config?.priority || 'MEDIUM'
+          body: step.config?.body ? `<p>${step.config.body}</p>` : '',
+          priority: (step.config?.priority || 'NONE').toUpperCase(),
+          use_explicit_associations: 'true',
+          associations: [{
+            target: { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 10 },
+            value: { type: 'ENROLLED_OBJECT' }
+          }]
         };
         break;
     }
