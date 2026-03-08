@@ -664,12 +664,23 @@ async function testDeploy() {
     enrollmentCriteria: { shouldReEnroll: false, type: 'EVENT_BASED', eventFilterBranches: [{ filterBranchType: 'UNIFIED_EVENTS', filterBranchOperator: 'AND', operator: 'HAS_COMPLETED', eventTypeId: '4-1639801', filterBranches: [], filters: [] }] }
   });
 
+  // Try different actionTypeVersions and field formats
+  const makeTest2 = (name, actionProps) => ({
+    name, type: 'CONTACT_FLOW', objectTypeId: '0-1', flowType: 'WORKFLOW',
+    isEnabled: false, startActionId: '1', nextAvailableActionId: '2',
+    actions: [{ type: 'SINGLE_CONNECTION', actionId: '1', ...actionProps }],
+    enrollmentCriteria: { shouldReEnroll: false, type: 'EVENT_BASED', eventFilterBranches: [{ filterBranchType: 'UNIFIED_EVENTS', filterBranchOperator: 'AND', operator: 'HAS_COMPLETED', eventTypeId: '4-1639801', filterBranches: [], filters: [] }] }
+  });
+
   const tests = [
-    ['2A staticValue obj', makeTest('TEST 2A', { property_name: 'lifecyclestage', value: { staticValue: 'lead' } })],
-    ['2B flat string', makeTest('TEST 2B', { property_name: 'lifecyclestage', value: 'lead' })],
-    ['2C newValue', makeTest('TEST 2C', { property_name: 'lifecyclestage', newValue: 'lead' })],
-    ['2D hs_marketable', makeTest('TEST 2D', { property_name: 'hs_marketable_status', value: { staticValue: 'true' } })],
-    ['2E simple prop', makeTest('TEST 2E', { property_name: 'company', value: { staticValue: 'Test Inc' } })],
+    // Version 1
+    ['v1', makeTest2('T1', { actionTypeId: '0-5', actionTypeVersion: 1, fields: { property_name: 'company', value: { staticValue: 'Test' } } })],
+    // Version 2
+    ['v2', makeTest2('T2', { actionTypeId: '0-5', actionTypeVersion: 2, fields: { property_name: 'company', value: { staticValue: 'Test' } } })],
+    // Empty fields
+    ['empty', makeTest2('T3', { actionTypeId: '0-5', actionTypeVersion: 0, fields: {} })],
+    // With objectTypeId in action
+    ['+objType', makeTest2('T4', { actionTypeId: '0-5', actionTypeVersion: 0, objectTypeId: '0-1', fields: { property_name: 'company', value: { staticValue: 'Test' } } })],
   ];
 
   const baseUrl = '/api/hubspot';
