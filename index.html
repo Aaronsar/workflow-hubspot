@@ -535,7 +535,8 @@ function buildHubSpotPayload() {
       filters: [{
         filterType: 'PROPERTY',
         property: trigger.config.property || '',
-        operation: { operationType: 'STRING', operator: 'IS_EQUAL_TO', includeObjectsWithNoValueSet: false, value: trigger.config.value || '' }
+        operator: 'IS_EQUAL_TO',
+        value: trigger.config.value || ''
       }]
     }];
   } else if (trigger?.config?.triggerType === 'form_submission') {
@@ -547,7 +548,8 @@ function buildHubSpotPayload() {
       filters: trigger.config.formId ? [{
         filterType: 'PROPERTY',
         property: 'hs_form_id',
-        operation: { operationType: 'STRING', operator: 'IS_EQUAL_TO', includeObjectsWithNoValueSet: false, value: trigger.config.formId }
+        operator: 'IS_EQUAL_TO',
+        value: trigger.config.formId
       }] : []
     }];
   } else if (trigger?.config?.triggerType === 'list_membership') {
