@@ -478,7 +478,12 @@ async function deployToHubspot() {
 
   try {
     const payload = buildHubSpotPayload();
-    const res = await fetch('https://api.hubapi.com/automation/v4/flows', {
+    // Use Vercel proxy to avoid CORS, fallback to direct for local testing
+    const isLocal = location.protocol === 'file:' || location.hostname === 'localhost';
+    const baseUrl = isLocal ? 'https://api.hubapi.com' : '/api/hubspot';
+    const url = isLocal ? `${baseUrl}/automation/v4/flows` : `${baseUrl}/automation/v4/flows`;
+
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${hubspotToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -488,11 +493,14 @@ async function deployToHubspot() {
       const data = await res.json();
       toast('Deploye sur HubSpot ! ID: ' + data.flowId, 'success');
     } else {
-      const err = await res.json();
-      toast('Erreur HubSpot: ' + (err.message || JSON.stringify(err)), 'error');
+      const err = await res.json().catch(() => ({}));
+      const msg = err.message || err.category || JSON.stringify(err);
+      toast('Erreur HubSpot: ' + msg, 'error');
+      console.error('HubSpot error:', err);
     }
   } catch (err) {
     toast('Erreur: ' + err.message, 'error');
+    console.error('Deploy error:', err);
   }
 }
 
