@@ -293,7 +293,12 @@ Types possibles :
 - set_property : category="action", config: {"property":"nom_hubspot","value":"valeur"}
   Exemples : "contact marketing" → property="hs_marketable_status", value="true" | "lifecycle stage" → property="lifecyclestage", value="lead|customer|etc"
 - send_email : category="action", config: {"emailName":"description"}
-- delay : category="delay", config: {"duration":nombre,"unit":"MINUTES|HOURS|DAYS|WEEKS"}
+- delay : category="delay". Deux formats possibles :
+  1. Durée relative : config: {"duration":nombre,"unit":"MINUTES|HOURS|DAYS|WEEKS"}
+     Exemple : "attendre 3 jours" → {"duration":3,"unit":"DAYS"}
+  2. Date/heure précise : config: {"datetime":"YYYY-MM-DDTHH:mm:ss"}
+     Exemple : "attendre jusqu'au 18 mars à 15h" → {"datetime":"2026-03-18T15:00:00"}
+     IMPORTANT : pour les dates, utilise TOUJOURS le format ISO 8601 avec l'année 2026.
 - create_task : category="action", config: {"subject":"sujet","body":"détails","priority":"NONE|HIGH"}
 - branch : category="branch", config: {"property":"","operator":"eq|neq|contains","value":""}
 
@@ -406,7 +411,10 @@ function renderConfig(step) {
   if (c.triggerType) parts.push(`Type: ${c.triggerType}`);
   if (c.property) parts.push(`Propriete: ${c.property}`);
   if (c.value) parts.push(`Valeur: ${c.value}`);
-  if (c.duration) parts.push(`Duree: ${c.duration} ${(c.unit || 'DAYS').toLowerCase()}`);
+  if (c.datetime) {
+    const d = new Date(c.datetime);
+    parts.push(`Jusqu'au: ${d.toLocaleDateString('fr-FR')} à ${d.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}`);
+  } else if (c.duration) parts.push(`Duree: ${c.duration} ${(c.unit || 'DAYS').toLowerCase()}`);
   if (c.emailName) parts.push(`Email: ${c.emailName}`);
   if (c.subject) parts.push(`Sujet: ${c.subject}`);
   if (c.formName) parts.push(`Formulaire: ${c.formName}`);
@@ -507,13 +515,22 @@ function buildHubSpotPayload() {
     let action = { type: 'SINGLE_CONNECTION', actionId, actionTypeVersion: 0 };
 
     if (step.type === 'delay') {
-      const dur = parseInt(step.config?.duration) || 1;
-      const unit = (step.config?.unit || 'DAYS').toUpperCase();
-      let delayMinutes = dur * 1440;
-      if (unit === 'MINUTES') delayMinutes = dur;
-      else if (unit === 'HOURS') delayMinutes = dur * 60;
-      else if (unit === 'DAYS') delayMinutes = dur * 1440;
-      else if (unit === 'WEEKS') delayMinutes = dur * 10080;
+      let delayMinutes;
+      if (step.config?.datetime) {
+        // Date/time specific: calculate minutes from now
+        const target = new Date(step.config.datetime);
+        const now = new Date();
+        delayMinutes = Math.max(1, Math.round((target - now) / 60000));
+        console.log(`Delay until ${step.config.datetime}: ${delayMinutes} minutes from now`);
+      } else {
+        const dur = parseInt(step.config?.duration) || 1;
+        const unit = (step.config?.unit || 'DAYS').toUpperCase();
+        delayMinutes = dur * 1440;
+        if (unit === 'MINUTES') delayMinutes = dur;
+        else if (unit === 'HOURS') delayMinutes = dur * 60;
+        else if (unit === 'DAYS') delayMinutes = dur * 1440;
+        else if (unit === 'WEEKS') delayMinutes = dur * 10080;
+      }
       action.actionTypeId = '0-1';
       action.fields = { delta: String(delayMinutes), time_unit: 'MINUTES' };
 
