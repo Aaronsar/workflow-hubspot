@@ -513,9 +513,9 @@ async function deployToHubspot() {
       toast('Deploye sur HubSpot ! ID: ' + data.id, 'success');
     } else {
       const err = await res.json().catch(() => ({}));
-      const msg = err.message || err.category || JSON.stringify(err);
+      const msg = err.message || err.category || JSON.stringify(err, null, 2);
       toast('Erreur HubSpot: ' + msg, 'error');
-      console.error('HubSpot error:', err);
+      console.error('HubSpot error detail:', JSON.stringify(err, null, 2));
     }
   } catch (err) {
     toast('Erreur: ' + err.message, 'error');
@@ -559,12 +559,12 @@ function buildHubSpotPayload() {
         action.actionTypeId = '0-1';
         const dur = parseInt(step.config?.duration) || 1;
         const unit = (step.config?.unit || 'DAYS').toUpperCase();
-        let deltaMs = dur * 86400000; // default days in ms
-        if (unit === 'MINUTES') deltaMs = dur * 60000;
-        else if (unit === 'HOURS') deltaMs = dur * 3600000;
-        else if (unit === 'DAYS') deltaMs = dur * 86400000;
-        else if (unit === 'WEEKS') deltaMs = dur * 604800000;
-        action.fields = { delta: String(deltaMs), time_unit: 'MILLISECONDS' };
+        let delayMinutes = dur * 1440; // default days
+        if (unit === 'MINUTES') delayMinutes = dur;
+        else if (unit === 'HOURS') delayMinutes = dur * 60;
+        else if (unit === 'DAYS') delayMinutes = dur * 1440;
+        else if (unit === 'WEEKS') delayMinutes = dur * 10080;
+        action.fields = { delta: String(delayMinutes), time_unit: 'MINUTES' };
         break;
       case 'create_task':
         action.actionTypeId = '0-3';
