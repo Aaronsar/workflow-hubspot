@@ -673,14 +673,11 @@ async function testDeploy() {
   });
 
   const tests = [
-    // Version 1
-    ['v1', makeTest2('T1', { actionTypeId: '0-5', actionTypeVersion: 1, fields: { property_name: 'company', value: { staticValue: 'Test' } } })],
-    // Version 2
-    ['v2', makeTest2('T2', { actionTypeId: '0-5', actionTypeVersion: 2, fields: { property_name: 'company', value: { staticValue: 'Test' } } })],
-    // Empty fields
-    ['empty', makeTest2('T3', { actionTypeId: '0-5', actionTypeVersion: 0, fields: {} })],
-    // With objectTypeId in action
-    ['+objType', makeTest2('T4', { actionTypeId: '0-5', actionTypeVersion: 0, objectTypeId: '0-1', fields: { property_name: 'company', value: { staticValue: 'Test' } } })],
+    // Test ALL action types to see which ones the account supports
+    ['0-3 task', makeTest2('T-task', { actionTypeId: '0-3', actionTypeVersion: 0, fields: { task_type: 'TODO', subject: 'Test', body: '', priority: 'NONE' } })],
+    ['0-5 set_prop', makeTest2('T-prop', { actionTypeId: '0-5', actionTypeVersion: 0, fields: { property_name: 'company', value: { staticValue: 'Test' } } })],
+    ['0-9 notif', makeTest2('T-notif', { actionTypeId: '0-9', actionTypeVersion: 0, fields: {} })],
+    ['0-14 create_rec', makeTest2('T-rec', { actionTypeId: '0-14', actionTypeVersion: 0, fields: {} })],
   ];
 
   const baseUrl = '/api/hubspot';
@@ -702,7 +699,7 @@ async function testDeploy() {
       if (r.ok) { toast(`${label}: OK!`, 'success'); return; }
     } catch (e) { console.error(`${label} error:`, e); }
   }
-  toast('Tous les tests set_property ont echoue - voir console', 'error');
+  toast('Tests termines - voir console pour resultats', 'error');
 }
 
 // ===== SETTINGS =====
