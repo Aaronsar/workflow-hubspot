@@ -300,6 +300,8 @@ Types possibles :
      Exemple : "attendre jusqu'au 18 mars à 15h" → {"datetime":"2026-03-18T15:00:00"}
      IMPORTANT : pour les dates, utilise TOUJOURS le format ISO 8601 avec l'année 2026.
 - create_task : category="action", config: {"subject":"sujet","body":"détails","priority":"NONE|HIGH"}
+- send_sms : category="action", config: {"message":"contenu du SMS"}
+  Exemples : "envoyer un SMS", "envoyer un SMS avec SMSFactor", "envoyer un texto"
 - branch : category="branch", config: {"property":"","operator":"eq|neq|contains","value":""}
 
 Exemple : "quand quelqu'un remplit un formulaire, définir en contact marketing puis envoyer un email puis attendre 3 jours" →
@@ -395,6 +397,7 @@ function getTypeLabel(type) {
   const labels = {
     trigger: 'Declencheur',
     send_email: 'Envoyer email',
+    send_sms: 'Envoyer SMS',
     set_property: 'Modifier propriete',
     delay: 'Delai',
     create_task: 'Creer tache',
@@ -416,6 +419,7 @@ function renderConfig(step) {
     parts.push(`Jusqu'au: ${d.toLocaleDateString('fr-FR')} à ${d.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}`);
   } else if (c.duration) parts.push(`Duree: ${c.duration} ${(c.unit || 'DAYS').toLowerCase()}`);
   if (c.emailName) parts.push(`Email: ${c.emailName}`);
+  if (c.message) parts.push(`SMS: ${c.message}`);
   if (c.subject) parts.push(`Sujet: ${c.subject}`);
   if (c.formName) parts.push(`Formulaire: ${c.formName}`);
 
@@ -479,7 +483,7 @@ async function deployToHubspot() {
 
     if (res.ok) {
       const data = await res.json();
-      const supportedDeploy = ['trigger', 'delay', 'send_email', 'create_task', 'set_property'];
+      const supportedDeploy = ['trigger', 'delay', 'send_email', 'send_sms', 'create_task', 'set_property'];
       const manual = workflowSteps.filter(s => !supportedDeploy.includes(s.type));
       if (manual.length > 0) {
         toast(`Deploye ! Ajoutez manuellement: ${manual.map(s => s.label).join(', ')}`, 'success');
@@ -503,8 +507,8 @@ function buildHubSpotPayload() {
   const actionSteps = workflowSteps.filter(s => s.type !== 'trigger');
   const trigger = workflowSteps.find(s => s.type === 'trigger');
 
-  // Supported action types: delay, send_email, create_task, set_property
-  const supportedTypes = ['delay', 'send_email', 'create_task', 'set_property'];
+  // Supported action types: delay, send_email, send_sms, create_task, set_property
+  const supportedTypes = ['delay', 'send_email', 'send_sms', 'create_task', 'set_property'];
   const deployableSteps = actionSteps.filter(s => supportedTypes.includes(s.type));
   const manualSteps = actionSteps.filter(s => !supportedTypes.includes(s.type));
 
@@ -555,6 +559,11 @@ function buildHubSpotPayload() {
         priority: step.config?.priority || 'NONE',
         use_explicit_associations: 'true'
       };
+
+    } else if (step.type === 'send_sms') {
+      action.actionTypeId = '1-9363088';
+      action.actionTypeVersion = 21;
+      action.fields = {};
 
     } else if (step.type === 'set_property') {
       action.actionTypeId = '0-5';
