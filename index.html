@@ -478,6 +478,7 @@ async function deployToHubspot() {
 
   try {
     const payload = buildHubSpotPayload();
+    console.log('HubSpot payload:', JSON.stringify(payload, null, 2));
     // Use Vercel proxy to avoid CORS, fallback to direct for local testing
     const isLocal = location.protocol === 'file:' || location.hostname === 'localhost';
     const baseUrl = isLocal ? 'https://api.hubapi.com' : '/api/hubspot';
@@ -515,10 +516,33 @@ function buildHubSpotPayload() {
     const action = { type: 'SINGLE_CONNECTION', actionId, actionTypeVersion: 1, fields: {} };
 
     switch (step.type) {
-      case 'send_email': action.actionTypeId = '0-4'; action.fields = { content_id: step.config?.emailId || '' }; break;
-      case 'set_property': action.actionTypeId = '0-5'; action.fields = { property_name: step.config?.property || '', value: step.config?.value || '' }; break;
-      case 'delay': action.actionTypeId = '0-1'; action.fields = { delta: String(step.config?.duration || 1), time_unit: step.config?.unit || 'DAYS' }; break;
-      case 'create_task': action.actionTypeId = '0-3'; action.fields = { subject: step.config?.subject || '', body: step.config?.body || '', priority: step.config?.priority || 'MEDIUM' }; break;
+      case 'send_email':
+        action.actionTypeId = '0-4';
+        action.fields = { content_id: step.config?.emailId || '' };
+        break;
+      case 'set_property':
+        action.actionTypeId = '0-5';
+        action.fields = {
+          property_name: step.config?.property || '',
+          operator: 'SET_VALUE',
+          newValue: step.config?.value || ''
+        };
+        break;
+      case 'delay':
+        action.actionTypeId = '0-1';
+        action.fields = {
+          delta: String(step.config?.duration || 1),
+          timeUnit: step.config?.unit || 'DAYS'
+        };
+        break;
+      case 'create_task':
+        action.actionTypeId = '0-3';
+        action.fields = {
+          subject: step.config?.subject || '',
+          body: step.config?.body || '',
+          priority: step.config?.priority || 'MEDIUM'
+        };
+        break;
     }
 
     if (nextId) action.connection = { edgeType: 'STANDARD', nextActionId: nextId };
