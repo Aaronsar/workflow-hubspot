@@ -471,7 +471,8 @@ async function deployToHubspot() {
 
     if (res.ok) {
       const data = await res.json();
-      const manual = workflowSteps.filter(s => s.type !== 'trigger' && s.type !== 'delay');
+      const supportedDeploy = ['trigger', 'delay', 'send_email', 'create_task', 'set_property'];
+      const manual = workflowSteps.filter(s => !supportedDeploy.includes(s.type));
       if (manual.length > 0) {
         toast(`Deploye ! Ajoutez manuellement: ${manual.map(s => s.label).join(', ')}`, 'success');
       } else {
@@ -494,26 +495,50 @@ function buildHubSpotPayload() {
   const actionSteps = workflowSteps.filter(s => s.type !== 'trigger');
   const trigger = workflowSteps.find(s => s.type === 'trigger');
 
-  // Only delay actions are supported via API (other types need HubSpot Pro/Enterprise)
-  const delaySteps = actionSteps.filter(s => s.type === 'delay');
-  const manualSteps = actionSteps.filter(s => s.type !== 'delay');
+  // Supported action types: delay, send_email, create_task, set_property
+  const supportedTypes = ['delay', 'send_email', 'create_task', 'set_property'];
+  const deployableSteps = actionSteps.filter(s => supportedTypes.includes(s.type));
+  const manualSteps = actionSteps.filter(s => !supportedTypes.includes(s.type));
 
-  const actions = delaySteps.map((step, i) => {
+  const actions = deployableSteps.map((step, i) => {
     const actionId = String(i + 1);
-    const nextId = i < delaySteps.length - 1 ? String(i + 2) : null;
-    const dur = parseInt(step.config?.duration) || 1;
-    const unit = (step.config?.unit || 'DAYS').toUpperCase();
-    let delayMinutes = dur * 1440;
-    if (unit === 'MINUTES') delayMinutes = dur;
-    else if (unit === 'HOURS') delayMinutes = dur * 60;
-    else if (unit === 'DAYS') delayMinutes = dur * 1440;
-    else if (unit === 'WEEKS') delayMinutes = dur * 10080;
+    const nextId = i < deployableSteps.length - 1 ? String(i + 2) : null;
 
-    const action = {
-      type: 'SINGLE_CONNECTION', actionId, actionTypeVersion: 0,
-      actionTypeId: '0-1',
-      fields: { delta: String(delayMinutes), time_unit: 'MINUTES' }
-    };
+    let action = { type: 'SINGLE_CONNECTION', actionId, actionTypeVersion: 0 };
+
+    if (step.type === 'delay') {
+      const dur = parseInt(step.config?.duration) || 1;
+      const unit = (step.config?.unit || 'DAYS').toUpperCase();
+      let delayMinutes = dur * 1440;
+      if (unit === 'MINUTES') delayMinutes = dur;
+      else if (unit === 'HOURS') delayMinutes = dur * 60;
+      else if (unit === 'DAYS') delayMinutes = dur * 1440;
+      else if (unit === 'WEEKS') delayMinutes = dur * 10080;
+      action.actionTypeId = '0-1';
+      action.fields = { delta: String(delayMinutes), time_unit: 'MINUTES' };
+
+    } else if (step.type === 'send_email') {
+      action.actionTypeId = '0-4';
+      action.fields = { content_id: step.config?.emailId || '0' };
+
+    } else if (step.type === 'create_task') {
+      action.actionTypeId = '0-3';
+      action.fields = {
+        task_type: 'TODO',
+        subject: step.config?.subject || 'Tache',
+        body: step.config?.body || '',
+        priority: step.config?.priority || 'NONE',
+        use_explicit_associations: 'true'
+      };
+
+    } else if (step.type === 'set_property') {
+      action.actionTypeId = '0-5';
+      action.fields = {
+        property_name: step.config?.property || '',
+        value: { type: 'STATIC_VALUE', staticValue: step.config?.value || '' }
+      };
+    }
+
     if (nextId) action.connection = { edgeType: 'STANDARD', nextActionId: nextId };
     return action;
   });
@@ -624,11 +649,19 @@ async function testAllActions() {
       }])
     },
     {
-      name: 'TEST - Set Property (0-5)',
-      payload: basePayload('TEST - Set Property', [{
+      name: 'TEST - Set Property v1 (STATIC_VALUE)',
+      payload: basePayload('TEST - Set Prop v1', [{
         type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
         actionTypeId: '0-5',
-        fields: { property_name: 'lifecyclestage', value: { staticValue: 'lead' } }
+        fields: { property_name: 'lifecyclestage', value: { type: 'STATIC_VALUE', staticValue: 'lead' } }
+      }])
+    },
+    {
+      name: 'TEST - Set Property v2 (flat string)',
+      payload: basePayload('TEST - Set Prop v2', [{
+        type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
+        actionTypeId: '0-5',
+        fields: { property_name: 'lifecyclestage', value: 'lead' }
       }])
     },
     {
@@ -676,6 +709,26 @@ async function testAllActions() {
       console.log(`❌ ${test.name}: ${err.message}`);
     }
   }
+
+  // Reverse-engineer: GET existing workflows to see set_property format
+  try {
+    const listRes = await fetch(`${baseUrl}/automation/v4/flows?limit=5`, {
+      headers: { 'Authorization': `Bearer ${hubspotToken}` }
+    });
+    const listData = await listRes.json().catch(() => ({}));
+    console.log('📋 Existing workflows:', listData);
+    if (listData.results) {
+      for (const wf of listData.results.slice(0, 3)) {
+        const detailRes = await fetch(`${baseUrl}/automation/v4/flows/${wf.id}`, {
+          headers: { 'Authorization': `Bearer ${hubspotToken}` }
+        });
+        const detail = await detailRes.json().catch(() => ({}));
+        if (detail.actions?.length > 0) {
+          console.log(`🔍 Workflow "${detail.name}" actions:`, JSON.stringify(detail.actions, null, 2));
+        }
+      }
+    }
+  } catch (e) { console.log('GET workflows failed:', e.message); }
 
   // Also test scopes: check if we can read contacts & marketing emails
   const scopeTests = [
