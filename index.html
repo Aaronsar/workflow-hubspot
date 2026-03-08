@@ -154,6 +154,7 @@
         <button class="btn btn-ghost btn-sm" onclick="clearWorkflow()">Effacer</button>
         <button class="btn btn-ghost btn-sm" onclick="saveWorkflow()">Sauvegarder</button>
         <button class="btn btn-orange btn-sm" onclick="deployToHubspot()">Deployer sur HubSpot</button>
+        <button class="btn btn-ghost btn-sm" onclick="testDeploy()" style="color:#f97316">Test API</button>
       </div>
     </div>
     <div class="workflow-list" id="workflowList"></div>
@@ -633,6 +634,62 @@ function buildHubSpotPayload() {
     actions,
     enrollmentCriteria
   };
+}
+
+// ===== TEST DEPLOY =====
+async function testDeploy() {
+  if (!hubspotToken) { toast('Token HubSpot requis', 'error'); return; }
+
+  // Test 1: Just a delay
+  const test1 = {
+    name: 'TEST - Delay only',
+    type: 'CONTACT_FLOW', objectTypeId: '0-1', flowType: 'WORKFLOW',
+    isEnabled: false, startActionId: '1', nextAvailableActionId: '2',
+    actions: [{
+      type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
+      actionTypeId: '0-1',
+      fields: { delta: '1440', time_unit: 'MINUTES' }
+    }],
+    enrollmentCriteria: {
+      shouldReEnroll: false, type: 'EVENT_BASED',
+      eventFilterBranches: [{ filterBranchType: 'UNIFIED_EVENTS', filterBranchOperator: 'AND', operator: 'HAS_COMPLETED', eventTypeId: '4-1639801', filterBranches: [], filters: [] }]
+    }
+  };
+
+  // Test 2: Just a set_property
+  const test2 = {
+    name: 'TEST - Set property only',
+    type: 'CONTACT_FLOW', objectTypeId: '0-1', flowType: 'WORKFLOW',
+    isEnabled: false, startActionId: '1', nextAvailableActionId: '2',
+    actions: [{
+      type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
+      actionTypeId: '0-5',
+      fields: { property_name: 'lifecyclestage', value: { staticValue: 'lead' } }
+    }],
+    enrollmentCriteria: {
+      shouldReEnroll: false, type: 'EVENT_BASED',
+      eventFilterBranches: [{ filterBranchType: 'UNIFIED_EVENTS', filterBranchOperator: 'AND', operator: 'HAS_COMPLETED', eventTypeId: '4-1639801', filterBranches: [], filters: [] }]
+    }
+  };
+
+  const baseUrl = '/api/hubspot';
+  const headers = { 'Authorization': `Bearer ${hubspotToken}`, 'Content-Type': 'application/json' };
+
+  console.log('=== TEST 1: Delay only ===');
+  try {
+    const r1 = await fetch(`${baseUrl}/automation/v4/flows`, { method: 'POST', headers, body: JSON.stringify(test1) });
+    const d1 = await r1.json().catch(() => ({}));
+    console.log('Test 1 result:', r1.status, JSON.stringify(d1, null, 2));
+    toast(`Test delay: ${r1.status} ${r1.ok ? 'OK' : d1.message}`, r1.ok ? 'success' : 'error');
+  } catch (e) { console.error('Test 1 error:', e); }
+
+  console.log('=== TEST 2: Set property only ===');
+  try {
+    const r2 = await fetch(`${baseUrl}/automation/v4/flows`, { method: 'POST', headers, body: JSON.stringify(test2) });
+    const d2 = await r2.json().catch(() => ({}));
+    console.log('Test 2 result:', r2.status, JSON.stringify(d2, null, 2));
+    toast(`Test property: ${r2.status} ${r2.ok ? 'OK' : d2.message}`, r2.ok ? 'success' : 'error');
+  } catch (e) { console.error('Test 2 error:', e); }
 }
 
 // ===== SETTINGS =====
