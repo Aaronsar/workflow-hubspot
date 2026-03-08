@@ -555,6 +555,7 @@ function buildHubSpotPayload() {
     enrollmentCriteria.eventFilterBranches = [{
       filterBranchType: 'UNIFIED_EVENTS',
       filterBranchOperator: 'AND',
+      operator: 'AND',
       eventTypeId: '4-655002',
       filters: [{
         filterType: 'PROPERTY',
@@ -568,19 +569,16 @@ function buildHubSpotPayload() {
     enrollmentCriteria.eventFilterBranches = [{
       filterBranchType: 'UNIFIED_EVENTS',
       filterBranchOperator: 'AND',
+      operator: 'AND',
       eventTypeId: '4-1639801',
-      filters: trigger.config.formId ? [{
-        filterType: 'PROPERTY',
-        property: 'hs_form_id',
-        operator: 'IS_EQUAL_TO',
-        value: trigger.config.formId
-      }] : []
+      filters: []
     }];
   } else if (trigger?.config?.triggerType === 'list_membership') {
     enrollmentCriteria.type = 'LIST_BASED';
     enrollmentCriteria.listFilterBranch = {
       filterBranchType: 'OR',
       filterBranchOperator: 'OR',
+      operator: 'OR',
       filters: [{ filterType: 'LIST', listId: trigger.config.listId || '' }]
     };
   } else {
@@ -588,6 +586,7 @@ function buildHubSpotPayload() {
     enrollmentCriteria.eventFilterBranches = [{
       filterBranchType: 'UNIFIED_EVENTS',
       filterBranchOperator: 'AND',
+      operator: 'AND',
       eventTypeId: '4-1639801',
       filters: []
     }];
