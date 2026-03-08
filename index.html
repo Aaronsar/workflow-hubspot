@@ -154,7 +154,6 @@
         <button class="btn btn-ghost btn-sm" onclick="clearWorkflow()">Effacer</button>
         <button class="btn btn-ghost btn-sm" onclick="saveWorkflow()">Sauvegarder</button>
         <button class="btn btn-orange btn-sm" onclick="deployToHubspot()">Deployer sur HubSpot</button>
-        <button class="btn btn-ghost btn-sm" onclick="testDeploy()" style="color:#f97316">Test API</button>
       </div>
     </div>
     <div class="workflow-list" id="workflowList"></div>
@@ -446,24 +445,6 @@ function loadSavedList() {
   // Available for future UI
 }
 
-// ===== HUBSPOT EMAILS =====
-let hubspotEmails = [];
-
-async function fetchHubSpotEmails() {
-  if (!hubspotToken) return;
-  try {
-    const isLocal = location.protocol === 'file:' || location.hostname === 'localhost';
-    const baseUrl = isLocal ? 'https://api.hubapi.com' : '/api/hubspot';
-    const res = await fetch(`${baseUrl}/marketing/v3/emails?limit=100&orderBy=-updated`, {
-      headers: { 'Authorization': `Bearer ${hubspotToken}`, 'Content-Type': 'application/json' }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      hubspotEmails = (data.results || []).filter(e => e.type === 'AUTOMATED' || e.type === 'AUTOMATED_AB');
-    }
-  } catch (e) { console.warn('Could not fetch emails:', e); }
-}
-
 // ===== DEPLOY TO HUBSPOT =====
 async function deployToHubspot() {
   if (!hubspotToken) { toast('Ajoutez votre token HubSpot dans les reglages', 'error'); openSettings(); return; }
@@ -488,7 +469,12 @@ async function deployToHubspot() {
 
     if (res.ok) {
       const data = await res.json();
-      toast('Deploye sur HubSpot ! ID: ' + data.id, 'success');
+      const manual = workflowSteps.filter(s => s.type !== 'trigger' && s.type !== 'delay');
+      if (manual.length > 0) {
+        toast(`Deploye ! Ajoutez manuellement: ${manual.map(s => s.label).join(', ')}`, 'success');
+      } else {
+        toast('Deploye sur HubSpot ! ID: ' + data.id, 'success');
+      }
     } else {
       const err = await res.json().catch(() => ({}));
       const msg = err.message || err.category || JSON.stringify(err, null, 2);
@@ -506,63 +492,34 @@ function buildHubSpotPayload() {
   const actionSteps = workflowSteps.filter(s => s.type !== 'trigger');
   const trigger = workflowSteps.find(s => s.type === 'trigger');
 
-  // --- BUILD ACTIONS (skip send_email without real ID) ---
-  const validSteps = actionSteps.filter(s => {
-    if (s.type === 'send_email' && !s.config?.emailId) return false;
-    return true;
-  });
-  const actions = validSteps.map((step, i) => {
+  // Only delay actions are supported via API (other types need HubSpot Pro/Enterprise)
+  const delaySteps = actionSteps.filter(s => s.type === 'delay');
+  const manualSteps = actionSteps.filter(s => s.type !== 'delay');
+
+  const actions = delaySteps.map((step, i) => {
     const actionId = String(i + 1);
-    const nextId = i < validSteps.length - 1 ? String(i + 2) : null;
+    const nextId = i < delaySteps.length - 1 ? String(i + 2) : null;
+    const dur = parseInt(step.config?.duration) || 1;
+    const unit = (step.config?.unit || 'DAYS').toUpperCase();
+    let delayMinutes = dur * 1440;
+    if (unit === 'MINUTES') delayMinutes = dur;
+    else if (unit === 'HOURS') delayMinutes = dur * 60;
+    else if (unit === 'DAYS') delayMinutes = dur * 1440;
+    else if (unit === 'WEEKS') delayMinutes = dur * 10080;
+
     const action = {
-      type: 'SINGLE_CONNECTION',
-      actionId,
-      actionTypeVersion: 0,
-      fields: {}
+      type: 'SINGLE_CONNECTION', actionId, actionTypeVersion: 0,
+      actionTypeId: '0-1',
+      fields: { delta: String(delayMinutes), time_unit: 'MINUTES' }
     };
-
-    switch (step.type) {
-      case 'send_email':
-        action.actionTypeId = '0-4';
-        action.fields = { content_id: step.config?.emailId || '' };
-        break;
-      case 'set_property':
-        action.actionTypeId = '0-5';
-        action.fields = {
-          property_name: step.config?.property || '',
-          value: { staticValue: step.config?.value || '' }
-        };
-        break;
-      case 'delay':
-        action.actionTypeId = '0-1';
-        const dur = parseInt(step.config?.duration) || 1;
-        const unit = (step.config?.unit || 'DAYS').toUpperCase();
-        let delayMinutes = dur * 1440; // default days
-        if (unit === 'MINUTES') delayMinutes = dur;
-        else if (unit === 'HOURS') delayMinutes = dur * 60;
-        else if (unit === 'DAYS') delayMinutes = dur * 1440;
-        else if (unit === 'WEEKS') delayMinutes = dur * 10080;
-        action.fields = { delta: String(delayMinutes), time_unit: 'MINUTES' };
-        break;
-      case 'create_task':
-        action.actionTypeId = '0-3';
-        action.fields = {
-          task_type: 'TODO',
-          subject: step.config?.subject || '',
-          body: step.config?.body ? `<p>${step.config.body}</p>` : '',
-          priority: (step.config?.priority || 'NONE').toUpperCase(),
-          use_explicit_associations: 'true',
-          associations: [{
-            target: { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 10 },
-            value: { type: 'ENROLLED_OBJECT' }
-          }]
-        };
-        break;
-    }
-
     if (nextId) action.connection = { edgeType: 'STANDARD', nextActionId: nextId };
     return action;
   });
+
+  // Log what user needs to add manually
+  if (manualSteps.length > 0) {
+    console.log('Actions a ajouter manuellement dans HubSpot:', manualSteps.map(s => `${s.type}: ${s.label}`));
+  }
 
   // --- BUILD ENROLLMENT CRITERIA ---
   const enrollmentCriteria = { shouldReEnroll: false };
@@ -656,50 +613,6 @@ async function testDeploy() {
     }
   };
 
-  // Test 2A: staticValue object
-  const makeTest = (name, fields) => ({
-    name, type: 'CONTACT_FLOW', objectTypeId: '0-1', flowType: 'WORKFLOW',
-    isEnabled: false, startActionId: '1', nextAvailableActionId: '2',
-    actions: [{ type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0, actionTypeId: '0-5', fields }],
-    enrollmentCriteria: { shouldReEnroll: false, type: 'EVENT_BASED', eventFilterBranches: [{ filterBranchType: 'UNIFIED_EVENTS', filterBranchOperator: 'AND', operator: 'HAS_COMPLETED', eventTypeId: '4-1639801', filterBranches: [], filters: [] }] }
-  });
-
-  // Try different actionTypeVersions and field formats
-  const makeTest2 = (name, actionProps) => ({
-    name, type: 'CONTACT_FLOW', objectTypeId: '0-1', flowType: 'WORKFLOW',
-    isEnabled: false, startActionId: '1', nextAvailableActionId: '2',
-    actions: [{ type: 'SINGLE_CONNECTION', actionId: '1', ...actionProps }],
-    enrollmentCriteria: { shouldReEnroll: false, type: 'EVENT_BASED', eventFilterBranches: [{ filterBranchType: 'UNIFIED_EVENTS', filterBranchOperator: 'AND', operator: 'HAS_COMPLETED', eventTypeId: '4-1639801', filterBranches: [], filters: [] }] }
-  });
-
-  const tests = [
-    // Test ALL action types to see which ones the account supports
-    ['0-3 task', makeTest2('T-task', { actionTypeId: '0-3', actionTypeVersion: 0, fields: { task_type: 'TODO', subject: 'Test', body: '', priority: 'NONE' } })],
-    ['0-5 set_prop', makeTest2('T-prop', { actionTypeId: '0-5', actionTypeVersion: 0, fields: { property_name: 'company', value: { staticValue: 'Test' } } })],
-    ['0-9 notif', makeTest2('T-notif', { actionTypeId: '0-9', actionTypeVersion: 0, fields: {} })],
-    ['0-14 create_rec', makeTest2('T-rec', { actionTypeId: '0-14', actionTypeVersion: 0, fields: {} })],
-  ];
-
-  const baseUrl = '/api/hubspot';
-  const headers = { 'Authorization': `Bearer ${hubspotToken}`, 'Content-Type': 'application/json' };
-
-  console.log('=== TEST 1: Delay only ===');
-  try {
-    const r1 = await fetch(`${baseUrl}/automation/v4/flows`, { method: 'POST', headers, body: JSON.stringify(test1) });
-    const d1 = await r1.json().catch(() => ({}));
-    console.log('Test 1 result:', r1.status, JSON.stringify(d1, null, 2));
-  } catch (e) { console.error('Test 1 error:', e); }
-
-  for (const [label, payload] of tests) {
-    console.log(`=== TEST ${label} ===`);
-    try {
-      const r = await fetch(`${baseUrl}/automation/v4/flows`, { method: 'POST', headers, body: JSON.stringify(payload) });
-      const d = await r.json().catch(() => ({}));
-      console.log(`${label}: ${r.status}`, r.ok ? 'OK' : JSON.stringify(d, null, 2));
-      if (r.ok) { toast(`${label}: OK!`, 'success'); return; }
-    } catch (e) { console.error(`${label} error:`, e); }
-  }
-  toast('Tests termines - voir console pour resultats', 'error');
 }
 
 // ===== SETTINGS =====
