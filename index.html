@@ -125,6 +125,7 @@
       <div class="dot" id="hubspotDot"></div>
       <span id="hubspotStatus">HubSpot</span>
     </div>
+    <button class="btn btn-ghost btn-sm" onclick="testAllActions()" style="color:#f59e0b;border-color:#f59e0b">Test API</button>
     <button class="btn btn-ghost btn-sm" onclick="openSettings()">Reglages</button>
   </div>
 </header>
@@ -153,6 +154,7 @@
       <div class="workflow-actions">
         <button class="btn btn-ghost btn-sm" onclick="clearWorkflow()">Effacer</button>
         <button class="btn btn-ghost btn-sm" onclick="saveWorkflow()">Sauvegarder</button>
+        <button class="btn btn-ghost btn-sm" onclick="testAllActions()" style="color:#f59e0b;border-color:#f59e0b">Test API</button>
         <button class="btn btn-orange btn-sm" onclick="deployToHubspot()">Deployer sur HubSpot</button>
       </div>
     </div>
@@ -593,26 +595,115 @@ function buildHubSpotPayload() {
   };
 }
 
-// ===== TEST DEPLOY =====
-async function testDeploy() {
-  if (!hubspotToken) { toast('Token HubSpot requis', 'error'); return; }
+// ===== TEST ALL ACTIONS =====
+async function testAllActions() {
+  if (!hubspotToken) { toast('Token HubSpot requis', 'error'); openSettings(); return; }
 
-  // Test 1: Just a delay
-  const test1 = {
-    name: 'TEST - Delay only',
-    type: 'CONTACT_FLOW', objectTypeId: '0-1', flowType: 'WORKFLOW',
-    isEnabled: false, startActionId: '1', nextAvailableActionId: '2',
-    actions: [{
-      type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
-      actionTypeId: '0-1',
-      fields: { delta: '1440', time_unit: 'MINUTES' }
-    }],
-    enrollmentCriteria: {
-      shouldReEnroll: false, type: 'EVENT_BASED',
-      eventFilterBranches: [{ filterBranchType: 'UNIFIED_EVENTS', filterBranchOperator: 'AND', operator: 'HAS_COMPLETED', eventTypeId: '4-1639801', filterBranches: [], filters: [] }]
-    }
+  const isLocal = location.protocol === 'file:' || location.hostname === 'localhost';
+  const baseUrl = isLocal ? 'https://api.hubapi.com' : '/api/hubspot';
+
+  const baseCriteria = {
+    shouldReEnroll: false, type: 'EVENT_BASED',
+    eventFilterBranches: [{ filterBranchType: 'UNIFIED_EVENTS', filterBranchOperator: 'AND', operator: 'HAS_COMPLETED', eventTypeId: '4-1639801', filterBranches: [], filters: [] }]
   };
 
+  const basePayload = (name, actions) => ({
+    name, type: 'CONTACT_FLOW', objectTypeId: '0-1', flowType: 'WORKFLOW',
+    isEnabled: false, canEnrollFromSalesforce: false,
+    startActionId: '1', nextAvailableActionId: String(actions.length + 1),
+    actions, enrollmentCriteria: baseCriteria
+  });
+
+  const tests = [
+    {
+      name: 'TEST - Delay (0-1)',
+      payload: basePayload('TEST - Delay', [{
+        type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
+        actionTypeId: '0-1',
+        fields: { delta: '1440', time_unit: 'MINUTES' }
+      }])
+    },
+    {
+      name: 'TEST - Set Property (0-5)',
+      payload: basePayload('TEST - Set Property', [{
+        type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
+        actionTypeId: '0-5',
+        fields: { property_name: 'lifecyclestage', value: { staticValue: 'lead' } }
+      }])
+    },
+    {
+      name: 'TEST - Send Email (0-4)',
+      payload: basePayload('TEST - Send Email', [{
+        type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
+        actionTypeId: '0-4',
+        fields: { content_id: '0' }
+      }])
+    },
+    {
+      name: 'TEST - Create Task (0-3)',
+      payload: basePayload('TEST - Create Task', [{
+        type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
+        actionTypeId: '0-3',
+        fields: { task_type: 'TODO', subject: 'Test task', body: 'Test body', priority: 'NONE', use_explicit_associations: 'true' }
+      }])
+    },
+    {
+      name: 'TEST - Notification (0-9)',
+      payload: basePayload('TEST - Notification', [{
+        type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
+        actionTypeId: '0-9',
+        fields: { body: 'Test notification' }
+      }])
+    }
+  ];
+
+  toast('Test en cours... voir console', 'success');
+  const results = [];
+
+  for (const test of tests) {
+    try {
+      const res = await fetch(`${baseUrl}/automation/v4/flows`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${hubspotToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(test.payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      const status = res.status;
+      results.push({ name: test.name, status, ok: res.ok, detail: data });
+      console.log(`${status === 201 ? '✅' : '❌'} ${test.name}: ${status}`, data);
+    } catch (err) {
+      results.push({ name: test.name, status: 'ERR', ok: false, detail: err.message });
+      console.log(`❌ ${test.name}: ${err.message}`);
+    }
+  }
+
+  // Also test scopes: check if we can read contacts & marketing emails
+  const scopeTests = [
+    { name: 'READ Contacts', path: 'crm/v3/objects/contacts?limit=1' },
+    { name: 'READ Properties', path: 'crm/v3/properties/contacts' },
+    { name: 'READ Emails', path: 'marketing/v3/emails?limit=1' },
+  ];
+
+  for (const st of scopeTests) {
+    try {
+      const res = await fetch(`${baseUrl}/${st.path}`, {
+        headers: { 'Authorization': `Bearer ${hubspotToken}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      results.push({ name: `SCOPE - ${st.name}`, status: res.status, ok: res.ok, detail: data });
+      console.log(`${res.ok ? '✅' : '❌'} SCOPE ${st.name}: ${res.status}`, data);
+    } catch (err) {
+      results.push({ name: `SCOPE - ${st.name}`, status: 'ERR', ok: false, detail: err.message });
+    }
+  }
+
+  // Show summary
+  const summary = results.map(r => `${r.ok ? '✅' : '❌'} ${r.name}: ${r.status}`).join('\n');
+  console.log('\n=== RESULTATS ===\n' + summary);
+
+  const okCount = results.filter(r => r.ok).length;
+  const failCount = results.filter(r => !r.ok).length;
+  toast(`Tests: ${okCount} OK, ${failCount} echec(s) - voir console F12`, okCount > failCount ? 'success' : 'error');
 }
 
 // ===== SETTINGS =====
