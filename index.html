@@ -649,19 +649,11 @@ async function testAllActions() {
       }])
     },
     {
-      name: 'TEST - Set Property v1 (STATIC_VALUE)',
-      payload: basePayload('TEST - Set Prop v1', [{
+      name: 'TEST - Set Property (0-5)',
+      payload: basePayload('TEST - Set Property', [{
         type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
         actionTypeId: '0-5',
         fields: { property_name: 'lifecyclestage', value: { type: 'STATIC_VALUE', staticValue: 'lead' } }
-      }])
-    },
-    {
-      name: 'TEST - Set Property v2 (flat string)',
-      payload: basePayload('TEST - Set Prop v2', [{
-        type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
-        actionTypeId: '0-5',
-        fields: { property_name: 'lifecyclestage', value: 'lead' }
       }])
     },
     {
@@ -680,14 +672,6 @@ async function testAllActions() {
         fields: { task_type: 'TODO', subject: 'Test task', body: 'Test body', priority: 'NONE', use_explicit_associations: 'true' }
       }])
     },
-    {
-      name: 'TEST - Notification (0-9)',
-      payload: basePayload('TEST - Notification', [{
-        type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
-        actionTypeId: '0-9',
-        fields: { body: 'Test notification' }
-      }])
-    }
   ];
 
   toast('Test en cours... voir console', 'success');
