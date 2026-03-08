@@ -510,10 +510,16 @@ function buildHubSpotPayload() {
   const actionSteps = workflowSteps.filter(s => s.type !== 'trigger');
   const trigger = workflowSteps.find(s => s.type === 'trigger');
 
+  // --- BUILD ACTIONS ---
   const actions = actionSteps.map((step, i) => {
     const actionId = String(i + 1);
     const nextId = i < actionSteps.length - 1 ? String(i + 2) : null;
-    const action = { type: 'SINGLE_CONNECTION', actionId, actionTypeVersion: 1, fields: {} };
+    const action = {
+      type: 'SINGLE_CONNECTION',
+      actionId,
+      actionTypeVersion: 0,
+      fields: {}
+    };
 
     switch (step.type) {
       case 'send_email':
@@ -524,16 +530,19 @@ function buildHubSpotPayload() {
         action.actionTypeId = '0-5';
         action.fields = {
           property_name: step.config?.property || '',
-          operator: 'SET_VALUE',
-          newValue: step.config?.value || ''
+          value: { staticValue: step.config?.value || '' }
         };
         break;
       case 'delay':
         action.actionTypeId = '0-1';
-        action.fields = {
-          delta: String(step.config?.duration || 1),
-          timeUnit: step.config?.unit || 'DAYS'
-        };
+        // Convert to minutes for reliability
+        const dur = parseInt(step.config?.duration) || 1;
+        const unit = step.config?.unit || 'DAYS';
+        let deltaMinutes = dur;
+        if (unit === 'HOURS') deltaMinutes = dur * 60;
+        else if (unit === 'DAYS') deltaMinutes = dur * 1440;
+        else if (unit === 'WEEKS') deltaMinutes = dur * 10080;
+        action.fields = { delta: String(deltaMinutes), time_unit: 'MINUTES' };
         break;
       case 'create_task':
         action.actionTypeId = '0-3';
@@ -549,45 +558,60 @@ function buildHubSpotPayload() {
     return action;
   });
 
+  // --- BUILD ENROLLMENT CRITERIA ---
   const enrollmentCriteria = { shouldReEnroll: false };
+
   if (trigger?.config?.triggerType === 'property_change') {
     enrollmentCriteria.type = 'EVENT_BASED';
     enrollmentCriteria.eventFilterBranches = [{
       filterBranchType: 'UNIFIED_EVENTS',
       filterBranchOperator: 'AND',
-      operator: 'AND',
+      operator: 'HAS_COMPLETED',
       eventTypeId: '4-655002',
-      filters: [{
+      filterBranches: [],
+      filters: trigger.config.property ? [{
         filterType: 'PROPERTY',
-        property: trigger.config.property || '',
-        operator: 'IS_EQUAL_TO',
-        value: trigger.config.value || ''
-      }]
+        property: trigger.config.property,
+        operation: {
+          operator: 'IS_EQUAL_TO',
+          operationType: 'STRING',
+          includeObjectsWithNoValueSet: false,
+          value: trigger.config.value || ''
+        }
+      }] : []
     }];
   } else if (trigger?.config?.triggerType === 'form_submission') {
     enrollmentCriteria.type = 'EVENT_BASED';
+    const filters = [];
+    if (trigger.config.formId) {
+      filters.push({
+        filterType: 'PROPERTY',
+        property: 'hs_form_id',
+        operation: {
+          operator: 'IS_ANY_OF',
+          operationType: 'ENUMERATION',
+          includeObjectsWithNoValueSet: false,
+          values: [trigger.config.formId]
+        }
+      });
+    }
     enrollmentCriteria.eventFilterBranches = [{
       filterBranchType: 'UNIFIED_EVENTS',
       filterBranchOperator: 'AND',
-      operator: 'AND',
+      operator: 'HAS_COMPLETED',
       eventTypeId: '4-1639801',
-      filters: []
+      filterBranches: [],
+      filters
     }];
-  } else if (trigger?.config?.triggerType === 'list_membership') {
-    enrollmentCriteria.type = 'LIST_BASED';
-    enrollmentCriteria.listFilterBranch = {
-      filterBranchType: 'OR',
-      filterBranchOperator: 'OR',
-      operator: 'OR',
-      filters: [{ filterType: 'LIST', listId: trigger.config.listId || '' }]
-    };
   } else {
+    // Default: form submission trigger
     enrollmentCriteria.type = 'EVENT_BASED';
     enrollmentCriteria.eventFilterBranches = [{
       filterBranchType: 'UNIFIED_EVENTS',
       filterBranchOperator: 'AND',
-      operator: 'AND',
+      operator: 'HAS_COMPLETED',
       eventTypeId: '4-1639801',
+      filterBranches: [],
       filters: []
     }];
   }
@@ -596,7 +620,9 @@ function buildHubSpotPayload() {
     name,
     type: 'CONTACT_FLOW',
     objectTypeId: '0-1',
+    flowType: 'WORKFLOW',
     isEnabled: false,
+    canEnrollFromSalesforce: false,
     startActionId: actions.length > 0 ? '1' : null,
     nextAvailableActionId: String(actions.length + 1),
     actions,
