@@ -515,24 +515,32 @@ function buildHubSpotPayload() {
     let action = { type: 'SINGLE_CONNECTION', actionId, actionTypeVersion: 0 };
 
     if (step.type === 'delay') {
-      let delayMinutes;
       if (step.config?.datetime) {
-        // Date/time specific: calculate minutes from now
+        // Date/time specific: use 0-35 "delay until calendar date"
         const target = new Date(step.config.datetime);
-        const now = new Date();
-        delayMinutes = Math.max(1, Math.round((target - now) / 60000));
-        console.log(`Delay until ${step.config.datetime}: ${delayMinutes} minutes from now`);
+        const timestamp = target.getTime();
+        const hour = target.getHours();
+        const minute = target.getMinutes();
+        console.log(`Delay until calendar date: ${step.config.datetime} (ts: ${timestamp}, ${hour}:${minute})`);
+        action.actionTypeId = '0-35';
+        action.fields = {
+          date: { type: 'STATIC_VALUE', staticValue: String(timestamp) },
+          delta: '0',
+          time_unit: 'DAYS',
+          time_of_day: { hour, minute }
+        };
       } else {
+        // Duration-based: use 0-1 simple delay
         const dur = parseInt(step.config?.duration) || 1;
         const unit = (step.config?.unit || 'DAYS').toUpperCase();
-        delayMinutes = dur * 1440;
+        let delayMinutes = dur * 1440;
         if (unit === 'MINUTES') delayMinutes = dur;
         else if (unit === 'HOURS') delayMinutes = dur * 60;
         else if (unit === 'DAYS') delayMinutes = dur * 1440;
         else if (unit === 'WEEKS') delayMinutes = dur * 10080;
+        action.actionTypeId = '0-1';
+        action.fields = { delta: String(delayMinutes), time_unit: 'MINUTES' };
       }
-      action.actionTypeId = '0-1';
-      action.fields = { delta: String(delayMinutes), time_unit: 'MINUTES' };
 
     } else if (step.type === 'send_email') {
       action.actionTypeId = '0-4';
@@ -679,6 +687,18 @@ async function testAllActions() {
         type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
         actionTypeId: '0-4',
         fields: { content_id: '0' }
+      }])
+    },
+    {
+      name: 'TEST - Delay Until Date (0-35)',
+      payload: basePayload('TEST - Delay Until Date', [{
+        type: 'SINGLE_CONNECTION', actionId: '1', actionTypeVersion: 0,
+        actionTypeId: '0-35',
+        fields: {
+          date: { type: 'STATIC_VALUE', staticValue: String(new Date('2026-03-20T15:00:00').getTime()) },
+          delta: '0', time_unit: 'DAYS',
+          time_of_day: { hour: 15, minute: 0 }
+        }
       }])
     },
     {
